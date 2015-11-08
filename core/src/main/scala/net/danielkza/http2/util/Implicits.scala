@@ -25,29 +25,38 @@ trait Implicits {
     def bin_l(args: Any*): Long = macro BitPatternsMacros.binaryLiteralImpl[Long]
   }
 
+  private def byteStringFromIntegers(str: String, groupSize: Int, radix: Int): ByteString = {
+    val cleanStr = str.replaceAll("\\s", "")
+    val builder = ByteString.newBuilder
+    builder.sizeHint(cleanStr.length / groupSize)
+
+    cleanStr.grouped(groupSize).map(s => Integer.parseUnsignedInt(s, radix)).foreach { byte =>
+      builder.putByte(byte.toByte)
+    }
+
+    builder.result()
+  }
+  
   implicit class ByteStringConversion(sc: StringContext) {
     def u8_bs(args: Any*): ByteString =
       ByteString(sc.s(args: _*), "UTF-8")
     
     def bs(args: Any*): ByteString = u8_bs(args: _*)
 
-    private def byteStringFromIntegers(str: String, groupSize: Int, radix: Int): ByteString = {
-      val cleanStr = str.replaceAll("\\s", "")
-      val builder = ByteString.newBuilder
-      builder.sizeHint(cleanStr.length / groupSize)
-
-      cleanStr.grouped(groupSize).map(s => Integer.parseUnsignedInt(s, radix)).foreach { byte =>
-        builder.putByte(byte.toByte)
-      }
-
-      builder.result()
-    }
 
     def bits_bs(args: Any*): ByteString =
       byteStringFromIntegers(sc.s(args: _*), groupSize=8, radix=2)
 
     def hex_bs(args: Any*): ByteString =
       byteStringFromIntegers(sc.s(args: _*), groupSize=2, radix=16)
+  }
+  
+  implicit class StringByteStringOps(s: String) {
+    def byteStringFromBits: ByteString = 
+      byteStringFromIntegers(s, groupSize=8, radix=2)
+    
+    def byteStringFromHex: ByteString = 
+      byteStringFromIntegers(s, groupSize=2, radix=16)
   }
   
   implicit class RichOutputStream(stream: OutputStream) {

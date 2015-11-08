@@ -4,7 +4,8 @@ import akka.util.ByteString
 
 sealed trait Frame {
   def tpe: Byte
-  def flags: Byte 
+  def flags: Byte
+  def withFlags(flags: Byte): Frame
 }
 
 sealed abstract class KnownFrame(frameType: Frame.Type) extends Frame {
@@ -13,61 +14,121 @@ sealed abstract class KnownFrame(frameType: Frame.Type) extends Frame {
 }
 
 object Frame {
-  case class StreamDependency(exclusive: Boolean, stream: Int, weight: Byte)
+  case class StreamDependency(exclusive: Boolean, stream: Int, weight: Int)
   
-  case class Data(data: ByteString, endStream: Boolean)
-    extends KnownFrame(Type.DATA)
-  {
-    override def flags: Byte = if(endStream) Flags.DATA.END_STREAM else 0
-  }
-  
-  case class Headers(streamDependency: Option[StreamDependency], headerFragment: ByteString, endStream: Boolean,
-                     endHeaders: Boolean)
-    extends KnownFrame(Type.HEADERS)
-  {
+  case class Data(
+    data: ByteString,
+    endStream: Boolean = false,
+    padding: Option[ByteString] = None
+  ) extends KnownFrame(Type.DATA) {
     override def flags: Byte = {
-      var flags: Byte = if(streamDependency.isDefined) Flags.HEADERS.PRIORITY else 0
-      if(endStream) flags = (flags | Flags.HEADERS.END_STREAM).toByte
-      if(endHeaders) flags = (flags | Flags.HEADERS.END_HEADERS).toByte
-      flags
+      var flags = if(endStream) Flags.DATA.END_STREAM else 0
+      padding.foreach { _ => flags |= Flags.DATA.PADDED }
+      flags.toByte
     }
+    
+    override def withFlags(flags: Byte): Data =
+      copy(endStream = (flags & Flags.DATA.END_STREAM) != 0)
   }
   
-  case class Priority(streamDependency: StreamDependency)
-    extends KnownFrame(Type.PRIORITY)
-  
-  case class ResetStream(errorCode: Int)
-    extends KnownFrame(Type.RST_STREAM)
-  
-  case class PushPromise(stream: Int, headerFragment: ByteString, endHeaders: Boolean)
-    extends KnownFrame(Type.PUSH_PROMISE)
-  {
-    override def flags: Byte = if(endHeaders) Flags.PUSH_PROMISE.END_HEADERS else 0
+  case class Headers(
+    streamDependency: Option[StreamDependency],
+    headerFragment: ByteString,
+    endStream: Boolean = false,
+    endHeaders: Boolean = false,
+    padding: Option[ByteString] = None
+  ) extends KnownFrame(Type.HEADERS) {
+    override def flags: Byte = {
+      var flags = if(streamDependency.isDefined) Flags.HEADERS.PRIORITY else 0
+      padding.foreach { _ => flags |= Flags.HEADERS.PADDED }
+      if(endStream) flags |= Flags.HEADERS.END_STREAM
+      if(endHeaders) flags |= Flags.HEADERS.END_HEADERS
+      
+      flags.toByte
+    }
+    
+    override def withFlags(flags: Byte): Headers =
+      copy(endStream = (flags & Flags.HEADERS.END_STREAM) != 0,
+           endHeaders = (flags & Flags.HEADERS.END_HEADERS) != 0) 
   }
   
-  case class Ping(data: Long, ack: Boolean)
-    extends KnownFrame(Type.PING)
-  {
-    override def flags: Byte = if(ack) Flags.PING.ACK else 0
+  case class Priority(
+    streamDependency: StreamDependency
+  ) extends KnownFrame(Type.PRIORITY) {
+    override def withFlags(flags: Byte): Priority = this
   }
   
-  case class Settings(settings: List[(Short, Int)], ack: Boolean)
-    extends KnownFrame(Type.SETTINGS)
-  {
-    override def flags: Byte = if(ack) Flags.SETTINGS.ACK else 0
+  case class ResetStream(
+    errorCode: Int
+  ) extends KnownFrame(Type.RST_STREAM) {
+    override def withFlags(flags: Byte): ResetStream = this
+  }
+  case class PushPromise(
+    stream: Int,
+    headerFragment: ByteString,
+    endHeaders: Boolean = false,
+    padding: Option[ByteString] = None
+  ) extends KnownFrame(Type.PUSH_PROMISE) {
+    override def flags: Byte = {
+      var flags = if(endHeaders) Flags.PUSH_PROMISE.END_HEADERS else 0
+      padding.foreach { _ => flags |= Flags.PUSH_PROMISE.PADDED }
+      flags.toByte
+    }
+    
+    override def withFlags(flags: Byte): PushPromise = 
+      copy(endHeaders = (flags & Flags.PUSH_PROMISE.END_HEADERS) != 0) 
   }
   
-  case class GoAway(lastStream: Int, errorCode: Int, debugData: ByteString)
-    extends KnownFrame(Type.GOAWAY)
+  case class Ping(
+    data: ByteString,
+    ack: Boolean = false
+  ) extends KnownFrame(Type.PING) {
+    override def flags: Byte =
+      if(ack) Flags.PING.ACK else 0
+
+    override def withFlags(flags: Byte): Ping = 
+      copy(ack = (flags & Flags.PING.ACK) != 0)
+  }
   
-  case class WindowUpdate(windowIncrement: Int)
-    extends KnownFrame(Type.WINDOW_UPDATE)
+  case class Settings(
+    settings: List[(Short, Int)],
+    ack: Boolean = false
+  ) extends KnownFrame(Type.SETTINGS) {
+    override def flags: Byte =
+      if(ack) Flags.SETTINGS.ACK else 0
+    
+    override def withFlags(flags: Byte): Settings = 
+      copy(ack = (flags & Flags.SETTINGS.ACK) != 0)
+  }
   
-  case class Continuation(headerFragment: ByteString, endHeaders: Boolean)
-    extends KnownFrame(Type.CONTINUATION)
+  case class GoAway(
+    lastStream: Int,
+    errorCode: Int,
+    debugData: ByteString
+  ) extends KnownFrame(Type.GOAWAY) {
+    override def withFlags(flags: Byte): GoAway = this
+  }
   
-  case class Unknown(override val tpe: Byte, override val flags: Byte, payload: ByteString)
-    extends Frame
+  case class WindowUpdate(
+    windowIncrement: Int
+  ) extends KnownFrame(Type.WINDOW_UPDATE) {
+    override def withFlags(flags: Byte): WindowUpdate= this
+  }
+  
+  case class Continuation(
+    headerFragment: ByteString,
+    endHeaders: Boolean = false
+  ) extends KnownFrame(Type.CONTINUATION) {
+    override def withFlags(flags: Byte): Continuation = this
+  }
+  
+  case class Unknown(
+    override val tpe: Byte,
+    override val flags: Byte,
+    payload: ByteString
+  ) extends Frame {
+    override def withFlags(flags: Byte): Unknown = copy(flags = flags)
+  }
   
   object Type extends Enumeration {
     val DATA          = Value(0x0)
@@ -80,8 +141,6 @@ object Frame {
     val GOAWAY        = Value(0x7)
     val WINDOW_UPDATE = Value(0x8)
     val CONTINUATION  = Value(0x9)
-    
-    val UNKNOWN       = Value(-1)
   }
   type Type = Type.Value
   

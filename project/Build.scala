@@ -15,9 +15,15 @@ object BuildSettings {
       "org.scalaz"                 %% "scalaz-core"     % "7.1.4",
       "com.chuusai"                %% "shapeless"       % "2.2.5",
       "com.typesafe.akka"          %% "akka-actor"      % "2.4.0",
-      "org.specs2"                 %% "specs2-core"     % "3.6.4"        % "test"
+      "com.github.pathikrit"       %% "better-files"    % "2.13.0",
+      "io.argonaut"                %% "argonaut"        % "6.1-M4"  % "test",
+      "org.specs2"                 %% "specs2-core"     % "3.6.4"  % "test"
     ),
     scalacOptions in Test ++= Seq("-Yrangepos"), // for Specs2
+    testOptions in Test += Tests.Setup { _ =>
+      val casesPath = ((baseDirectory in ThisBuild) / "http2-frame-test-case").value.absolutePath
+      sys.props += "http2.frame_tests_dir" -> casesPath
+    },
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.7.1")
   )
 }
