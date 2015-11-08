@@ -147,7 +147,7 @@ class CompressedBytesCoder extends Coder[ByteString] {
   override def decode(bs: ByteString): \/[HeaderError, (ByteString, Int)] = {
     for {
       encodedBytesResult <- bytesCoder.decode(bs)
-      val (encodedBytes, numReadBytes) = encodedBytesResult
+      (encodedBytes, numReadBytes) = encodedBytesResult
       decodeResult <- decodeLiteral(encodedBytes.iterator, encodedBytes.length)
     } yield (decodeResult._1, numReadBytes)
   }

@@ -23,8 +23,8 @@ class BytesCoder(lengthPrefix: Int = 0) extends Coder[ByteString] {
   override def decode(bs: ByteString): \/[HeaderError, (ByteString, Int)] = {
     for {
       lengthResult <- intCoder.decode(bs)
-      val (length, numReadBytes) = lengthResult 
-      val content = bs.slice(numReadBytes, numReadBytes + length)
+      (length, numReadBytes) = lengthResult
+      content = bs.slice(numReadBytes, numReadBytes + length)
       _ <- if(content.length != length)
         HeaderError.IncompleteInput(content.length, length).left
       else

@@ -30,7 +30,7 @@ abstract class Coder[T] {
   }
 
   def encodeS(value: T): EncodeState = StateT[\/[Error, ?], ByteStringBuilder, Unit] { in =>
-    encode(value, in).map(_ => in -> ())
+    encode(value, in).map(_ => (in, ()))
   }
   
   
@@ -136,7 +136,7 @@ object Coder {
       override def encode(value: Prod, stream: ByteStringBuilder): \/[Error, Unit] = {
         val elems = gen.to(value)
         val zipped = elems.zip(coders)(zipVC)
-        val init: enc.R[Error] = stream -> \/-()
+        val init: enc.R[Error] = stream -> \/-(())
         zipped.foldLeft(init)(enc)(encodeF)._2
       }
       

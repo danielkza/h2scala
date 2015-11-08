@@ -95,9 +95,9 @@ extends Coder[Seq[Header]] {
     do {
       (for {
         reprDec <- headerCoder.decode(buffer)
-        val (repr, bytesRead) = reprDec
+        (repr, bytesRead) = reprDec
         processed <- processHeaderRepr(repr)
-        val (maybeHeader, newDynamicTable) = processed
+        (maybeHeader, newDynamicTable) = processed
       } yield {
         maybeHeader.foreach { headers += _ }
         dynamicTable = newDynamicTable
@@ -122,6 +122,6 @@ extends Coder[Seq[Header]] {
       }
     }
     
-    \/-()
+    \/-(())
   }
 }
