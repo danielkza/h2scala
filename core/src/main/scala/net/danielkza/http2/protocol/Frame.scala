@@ -8,7 +8,7 @@ sealed trait Frame {
 }
 
 sealed abstract class KnownFrame(frameType: Frame.Type) extends Frame {
-  val tpe: Byte = frameType.id.toByte
+  override val tpe: Byte = frameType.id.toByte
   def flags: Byte = 0
 }
 
@@ -62,6 +62,9 @@ object Frame {
   
   case class WindowUpdate(windowIncrement: Int)
     extends KnownFrame(Type.WINDOW_UPDATE)
+  
+  case class Continuation(headerFragment: ByteString, endHeaders: Boolean)
+    extends KnownFrame(Type.CONTINUATION)
   
   case class Unknown(override val tpe: Byte, override val flags: Byte, payload: ByteString)
     extends Frame

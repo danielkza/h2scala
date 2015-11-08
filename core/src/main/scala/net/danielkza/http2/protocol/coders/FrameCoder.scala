@@ -112,7 +112,11 @@ class FrameCoder extends Coder[Frame] {
       payload <- decodeBytes(length, padded = false)
     } yield Unknown(tpe, flags, payload)
   }
-
+  
+  private def decodeContinuation(length: Int, endHeaders: Boolean): DecodeStateT[Continuation] = {  
+    decodeBytes(length, padded=false).map(Continuation(_, endHeaders))
+  }
+  
   def payloadDecoder(tpe: Byte, length: Int, flags: Byte): \/[HTTP2Error, DecodeStateT[Frame]] = {
     def err = HTTP2Error.InvalidFrameSize.left
     
@@ -122,6 +126,7 @@ class FrameCoder extends Coder[Frame] {
         val endStream = (flags & DATA.END_STREAM) != 0
         if (padded && length < 1) err
         else decodeData(length, padded, endStream).right
+      
       case Type.HEADERS =>
         val padded = (flags & HEADERS.PADDED) != 0
         val priority = (flags & HEADERS.PRIORITY) != 0
@@ -132,26 +137,36 @@ class FrameCoder extends Coder[Frame] {
         else if(priority && length < 5) err
         else if(padded && length < 1) err
         else decodeHeaders(length, padded, priority, endStream, endHeaders).right
+      
       case Type.PRIORITY =>
         if (length != 5) err
         else decodePriority.right
+      
       case Type.RST_STREAM =>
         if (length != 4) err
         else decodeResetStream.right
+      
       case Type.SETTINGS =>
         if (length % 6 != 0) err
         else decodeSettings(length / 6, (flags & SETTINGS.ACK) != 0).right
+      
       case Type.PUSH_PROMISE =>
         val padded = (flags & PUSH_PROMISE.PADDED) != 0
         if (padded && length < 5) err
         else if(length < 4) err
         else decodePushPromise(length, padded, (flags & PUSH_PROMISE.END_HEADERS) != 0).right
+      
       case Type.PING =>
         if (length != 8) err
         else decodePing((flags & PING.ACK) != 0).right
+      
       case Type.GOAWAY =>
         if (length < 8) err
         else decodeGoAway(length).right
+        
+      case Type.CONTINUATION =>
+        decodeContinuation(length, (flags & HEADERS.END_HEADERS) != 0).right
+        
       case Type.WINDOW_UPDATE =>
         if (length != 4) err
         else decodeWindowUpdate.right
@@ -279,6 +294,13 @@ class FrameCoder extends Coder[Frame] {
     int.encodeS(windowUpdate.windowIncrement)
   }
   
+  private def encodeContinuation(continuation: Continuation): EncodeState = {  
+    val SM = stateMonad[ByteStringBuilder]; import SM._
+    
+    encodeBytes(None) { modify { _ ++= continuation.headerFragment } }
+  }
+  
+  
   private def encodePassthrough(unknown: Unknown): EncodeState = {
     val SM = stateMonad[ByteStringBuilder]; import SM._
     
@@ -302,6 +324,7 @@ class FrameCoder extends Coder[Frame] {
       case f: Ping         => encodePing(f)
       case f: GoAway       => encodeGoAway(f)
       case f: WindowUpdate => encodeWindowUpdate(f)
+      case f: Continuation => encodeContinuation(f)
       case f: Unknown      => encodePassthrough(f)
     }
     
