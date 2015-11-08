@@ -51,14 +51,17 @@ class CompressedBytesCoder extends Coder[ByteString] {
   }
 
   override def encode(value: ByteString, stream: ByteStringBuilder): \/[HeaderError, Unit] = {
-    val length = encodeInternal(value, stream)
-    lengthCoder.encode(length, stream)
+    val buffer = ByteString.newBuilder
+    buffer.sizeHint((value.length * 2) / 3)
+    
+    val length = encodeInternal(value, buffer)
+    lengthCoder.encode(length, stream).map { _ =>
+      stream ++= buffer.result()
+    }
   }
 
   override def encode(value: ByteString): \/[HeaderError, ByteString] = {
     val buffer = ByteString.newBuilder
-    buffer.sizeHint((value.length * 2) / 3)
-    
     encode(value, buffer).map(_ => buffer.result())
   }
 
