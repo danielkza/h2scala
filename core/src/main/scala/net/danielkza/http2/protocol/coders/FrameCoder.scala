@@ -4,6 +4,7 @@ import scala.util.Try
 import scalaz._
 import scalaz.std.list._
 import scalaz.syntax.either._
+import scalaz.syntax.traverse._
 import akka.util.{ByteStringBuilder, ByteString}
 import net.danielkza.http2.Coder
 import net.danielkza.http2.protocol.{HTTP2Error, Frame}
@@ -218,12 +219,10 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
   }
 
   override def decode(bs: ByteString): \/[HTTP2Error, (Frame, Int)] = {
-    decodeS.run(bs).flatMap {
-      case (rem, frame) => \/-(frame, bs.length - rem.length)
-    }
+    decodeS.run(bs).map { case (rem, frame) => (frame, bs.length - rem.length) }
   }
   
-  def partialDecodeS: DecodeStateT[DecodeStateT[Frame]] = {
+  def decodeHeader: DecodeStateT[(DecodeStateT[Frame], Int)] = {
     val SMT = StateT.StateMonadTrans[ByteString]; import SMT._
 
     for {
@@ -232,12 +231,17 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
       flags <- byte.decodeS
       stream <- int.decodeS
       handler <- liftMU(payloadDecoder(tpe, length, flags, stream))
-    } yield handler
+    } yield handler -> length
   }
-  
+
   override def decodeS: DecodeStateT[Frame] = {
+    val SM = stateMonad[ByteString]; import SM._
+
     for {
-      handler <- partialDecodeS
+      partialResult <- decodeHeader
+      (handler, remLength) = partialResult
+      remInput <- get
+      _ <- ensureS(IncompleteInput(remInput.length, remLength)) { remInput.length < remLength }
       result <- handler
     } yield result
   }
@@ -291,9 +295,8 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
   }
   
   protected def encodeSettings(settings: Settings): EncodeState = {
-    //val SM = StateT.stateMonad[ByteStringBuilder]
-    val T = Traverse[List]
-    T.traverse_[StateTES[?, Error, ByteStringBuilder], (Short, Int), Unit](settings.settings) { case (identifier, value) =>
+    type S[T] = StateTES[T, Error, ByteStringBuilder]
+    settings.settings.traverse_[S] { case (identifier, value) =>
       for {
         _ <- short.encodeS(identifier)
         _ <- int.encodeS(value)
@@ -356,27 +359,25 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
   
   override def encodeS(frame: Frame): EncodeState = {
     val SM = stateMonad[ByteStringBuilder]; import SM._
-    
-    val payloadEncoder = frame match {
-      case f: Data         => encodeData(f)
-      case f: Headers      => encodeHeaders(f)
-      case f: Priority     => encodePriority(f)
-      case f: ResetStream  => encodeResetStream(f)
-      case f: Settings     => encodeSettings(f)
-      case f: PushPromise  => encodePushPromise(f)
-      case f: Ping         => encodePing(f)
-      case f: GoAway       => encodeGoAway(f)
-      case f: WindowUpdate => encodeWindowUpdate(f)
-      case f: Continuation => encodeContinuation(f)
-      case f: Unknown      => encodePassthrough(f)
-    }
-    
+
     for {
       _ <- checkStream(targetStream, frame.tpe)
       buffer <- get
       _ <- put(ByteString.newBuilder)
       payload <- get
-      _ <- payloadEncoder
+      _ <- frame match {
+        case f: Data         => encodeData(f)
+        case f: Headers      => encodeHeaders(f)
+        case f: Priority     => encodePriority(f)
+        case f: ResetStream  => encodeResetStream(f)
+        case f: Settings     => encodeSettings(f)
+        case f: PushPromise  => encodePushPromise(f)
+        case f: Ping         => encodePing(f)
+        case f: GoAway       => encodeGoAway(f)
+        case f: WindowUpdate => encodeWindowUpdate(f)
+        case f: Continuation => encodeContinuation(f)
+        case f: Unknown      => encodePassthrough(f)
+      }
       _ <- put(buffer)
       _ <- int24.encodeS(payload.length)
       _ <- byte.encodeS(frame.tpe)

@@ -1,7 +1,6 @@
 package net.danielkza.http2
 
-import scalaz.{Zip => _, _}
-import scalaz.syntax.applicative._
+import scalaz.{StateT, \/, -\/, \/-}
 import shapeless._
 import shapeless.ops.hlist._
 import akka.util.{ByteString, ByteStringBuilder}
