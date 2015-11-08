@@ -1,15 +1,9 @@
 package net.danielkza.http2.hpack.coders
 
 import scala.annotation.tailrec
-
-import java.io.OutputStream
-
 import scalaz._
 import scalaz.syntax.either._
-
 import akka.util.{ByteString, ByteStringBuilder}
-
-import net.danielkza.http2.util._
 import net.danielkza.http2.Coder
 import net.danielkza.http2.hpack.HeaderError
 

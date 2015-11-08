@@ -1,12 +1,9 @@
 package net.danielkza.http2.hpack.coders
 
-import java.io.OutputStream
 import java.util.NoSuchElementException
-import akka.util.{ByteString, ByteStringBuilder}
-
 import scalaz.\/
 import scalaz.syntax.either._
-
+import akka.util.{ByteString, ByteStringBuilder}
 import net.danielkza.http2.Coder
 import net.danielkza.http2.hpack.HeaderError
 

@@ -1,9 +1,7 @@
 package net.danielkza.http2.hpack.coders
 
-import java.io.OutputStream
 import scalaz.\/
 import akka.util.{ByteStringBuilder, ByteString}
-
 import net.danielkza.http2.util._
 import net.danielkza.http2.Coder
 import net.danielkza.http2.hpack.HeaderError

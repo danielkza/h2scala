@@ -1,6 +1,5 @@
 package net.danielkza.http2.hpack
 
-import java.io.OutputStream
 import scalaz._
 import scalaz.syntax.either._
 import scalaz.syntax.std.option._
