@@ -8,12 +8,13 @@ sealed trait Frame {
   def withFlags(flags: Byte): Frame
 }
 
-sealed abstract class KnownFrame(frameType: Frame.Type) extends Frame {
-  override val tpe: Byte = frameType.id.toByte
+sealed abstract class KnownFrame(override val tpe: Byte) extends Frame {
   def flags: Byte = 0
 }
 
 object Frame {
+  final val HEADER_LENGTH = 9
+
   case class StreamDependency(exclusive: Boolean, stream: Int, weight: Int)
   
   case class Data(
@@ -130,24 +131,23 @@ object Frame {
     override def withFlags(flags: Byte): Unknown = copy(flags = flags)
   }
   
-  object Type extends Enumeration {
-    val DATA          = Value(0x0)
-    val HEADERS       = Value(0x1)
-    val PRIORITY      = Value(0x2)
-    val RST_STREAM    = Value(0x3)
-    val SETTINGS      = Value(0x4)
-    val PUSH_PROMISE  = Value(0x5)
-    val PING          = Value(0x6)
-    val GOAWAY        = Value(0x7)
-    val WINDOW_UPDATE = Value(0x8)
-    val CONTINUATION  = Value(0x9)
+  object Type {
+    final val DATA: Byte          = 0x0
+    final val HEADERS: Byte       = 0x1
+    final val PRIORITY: Byte      = 0x2
+    final val RST_STREAM: Byte    = 0x3
+    final val SETTINGS: Byte      = 0x4
+    final val PUSH_PROMISE: Byte  = 0x5
+    final val PING: Byte          = 0x6
+    final val GOAWAY: Byte        = 0x7
+    final val WINDOW_UPDATE: Byte = 0x8
+    final val CONTINUATION: Byte  = 0x9
   }
-  type Type = Type.Value
   
   object Flags {
     object DATA {
       final val END_STREAM: Byte = 0x1
-      final val PADDED    : Byte = 0x8
+      final val PADDED: Byte     = 0x8
     }
     
     object HEADERS {
@@ -158,16 +158,16 @@ object Frame {
     }
     
     object PUSH_PROMISE {
-      final val END_HEADERS: Byte  = 0x4
-      final val PADDED: Byte       = 0x8
+      final val END_HEADERS: Byte = 0x4
+      final val PADDED: Byte      = 0x8
     }
     
     object PING {
-      final val ACK: Byte  = 0x1
+      final val ACK: Byte = 0x1
     }
     
     object SETTINGS {
-      final val ACK: Byte  = 0x1
+      final val ACK: Byte = 0x1
     }
   }
 }

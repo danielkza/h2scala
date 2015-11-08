@@ -1,6 +1,5 @@
 package net.danielkza.http2.protocol.coders
 
-import scala.util.Try
 import scalaz._
 import scalaz.std.list._
 import scalaz.syntax.either._
@@ -144,10 +143,10 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
   protected def checkStream[S](stream: Int, tpe: Byte) = {
     import Frame.Type._
     ensureS[S](InvalidStream) {
-      if(stream != 0 && (tpe == SETTINGS.id || tpe == PING.id || tpe == GOAWAY.id))
+      if(stream != 0 && (tpe == SETTINGS || tpe == PING || tpe == GOAWAY))
         false
-      else if(stream == 0 && (tpe == DATA.id || tpe == HEADERS.id || tpe == RST_STREAM.id || tpe == PRIORITY.id ||
-                              tpe == CONTINUATION.id))
+      else if(stream == 0 && (tpe == DATA || tpe == HEADERS || tpe == RST_STREAM || tpe == PRIORITY ||
+                              tpe == CONTINUATION))
         false
       else
         checkTargetStream(stream)
@@ -157,7 +156,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
   def payloadDecoder(tpe: Byte, length: Int, flags: Byte, stream: Int): \/[HTTP2Error, DecodeStateT[Frame]] = {
     def err = HTTP2Error.InvalidFrameSize.left
     
-    val maybeHandler = Try(Frame.Type(tpe)).map { 
+    val maybeHandler = tpe match {
       case Type.DATA =>
         val padded = (flags & DATA.PADDED) != 0
         val endStream = (flags & DATA.END_STREAM) != 0
@@ -208,9 +207,10 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
         
       case Type.CONTINUATION =>
         decodeContinuation(length, (flags & HEADERS.END_HEADERS) != 0).right
-    }.recover { case e: NoSuchElementException =>
-      decodePassthrough(tpe, length, flags).right[HTTP2Error]
-    }.get
+
+      case _ =>
+        decodePassthrough(tpe, length, flags).right
+    }
     
     // Convert from an invariant StateT of a subtype of Frame to one for Frame
     maybeHandler.map { handler =>

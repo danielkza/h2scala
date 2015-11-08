@@ -30,7 +30,7 @@ class FrameCoderTest extends Specification with TestHelpers {
   
   def frameJson(tpe: Byte): DecodeJson[Frame] = DecodeJson(c => {
     import Frame._
-    Frame.Type(tpe) match {
+    tpe match {
       case Type.DATA => for {
         padLen  <- c.get[Option[Int]]("padding_length")
         data    <- c.get[ByteString]("data")
@@ -87,6 +87,9 @@ class FrameCoderTest extends Specification with TestHelpers {
       case Type.WINDOW_UPDATE => for {
         increment <- c.get[Int]("window_size_increment")
       } yield WindowUpdate(increment)
+
+      case _ =>
+        DecodeResult.fail(s"Unknown frame type $tpe", c.history)
     }
   })
   
