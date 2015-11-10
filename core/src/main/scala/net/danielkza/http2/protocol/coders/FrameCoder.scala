@@ -7,9 +7,8 @@ import scalaz.syntax.traverse._
 import akka.util.{ByteStringBuilder, ByteString}
 import net.danielkza.http2.Coder
 import net.danielkza.http2.protocol.{HTTP2Error, Frame, Setting}
-import HTTP2Error._
 
-class FrameCoder(targetStream: Int) extends Coder[Frame] {
+class FrameCoder extends Coder[Frame] {
   import Frame._
   import Frame.Flags._
   import IntCoder._
@@ -50,11 +49,11 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     }
   }
   
-  protected def decodeData(length: Int, padded: Boolean, endStream: Boolean): DecodeStateT[Data] = {
-    decodeBytes(length, padded).map { case (content, padding) => Data(content, endStream, padding) }
+  protected def decodeData(length: Int, stream: Int, padded: Boolean, endStream: Boolean): DecodeStateT[Data] = {
+    decodeBytes(length, padded).map { case (content, padding) => Data(stream, content, endStream, padding) }
   }
   
-  protected def decodeHeaders(length: Int, padded: Boolean, streamDependency: Boolean, endStream: Boolean,
+  protected def decodeHeaders(length: Int, stream: Int, padded: Boolean, streamDependency: Boolean, endStream: Boolean,
                             endHeaders: Boolean): DecodeStateT[Headers] = {
     val SM = stateMonad[ByteString]
     
@@ -66,16 +65,16 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
         streamDependency <- if(streamDependency) decodeStreamDependency.map(Some(_))
                             else SM.pure(None)
         data <- SM.get
-      } yield Headers(streamDependency, data, endStream = endStream, endHeaders = endHeaders, padding = padding)
+      } yield Headers(stream, streamDependency, data, endStream = endStream, endHeaders = endHeaders, padding = padding)
     } yield headers
   }
   
-  protected def decodePriority: DecodeStateT[Priority] = {
-    decodeStreamDependency.map(Priority)
+  protected def decodePriority(stream: Int): DecodeStateT[Priority] = {
+    decodeStreamDependency.map(Priority(stream, _))
   }
   
-  protected def decodeResetStream: DecodeStateT[ResetStream] = {
-    int.decodeS.map(ResetStream)
+  protected def decodeResetStream(stream: Int): DecodeStateT[ResetStream] = {
+    int.decodeS.map(ResetStream(stream, _))
   }
   
   protected def decodeSingleSetting: DecodeStateT[Setting] = {
@@ -89,7 +88,9 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     stateMonad[ByteString].replicateM(num, decodeSingleSetting).map(Settings(_, ack))
   }
 
-  protected def decodePushPromise(length: Int, padded: Boolean, endHeaders: Boolean): DecodeStateT[PushPromise] = {
+  protected def decodePushPromise(length: Int, stream: Int, padded: Boolean, endHeaders: Boolean)
+    : DecodeStateT[PushPromise] =
+  {
     val SM = stateMonad[ByteString]; import SM._
     
     for {
@@ -97,11 +98,11 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
       (content, padding) = bytes
       rem <- get
       _ <- put(content)
-      stream <- int.decodeS
-      _ <- ensureS(new InvalidStream) { stream > 0 && stream % 2 == 0 }
+      promisedStream <- int.decodeS
+      _ <- ensureS(new InvalidStream) { promisedStream > 0 && promisedStream % 2 == 0 }
       data <- get
       _ <- put(rem)
-    } yield PushPromise(stream, data, endHeaders, padding)
+    } yield PushPromise(stream, promisedStream, data, endHeaders, padding)
   }
 
   protected def decodePing(ack: Boolean): DecodeStateT[Ping] = {
@@ -128,19 +129,16 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     } yield WindowUpdate(windowVal)
   }
   
-  protected def decodePassthrough(tpe: Byte, length: Int, flags: Byte) : DecodeStateT[Unknown] = {
+  protected def decodePassthrough(tpe: Byte, length: Int, stream: Int, flags: Byte) : DecodeStateT[NonStandard] = {
     for {
       content <- decodeUnpaddedBytes(length)
-    } yield Unknown(tpe, flags, content)
+    } yield NonStandard(stream, tpe, flags, content)
   }
   
-  protected def decodeContinuation(length: Int, endHeaders: Boolean): DecodeStateT[Continuation] = {  
-    decodeUnpaddedBytes(length).map(Continuation(_, endHeaders))
+  protected def decodeContinuation(length: Int, stream: Int, endHeaders: Boolean): DecodeStateT[Continuation] = {
+    decodeUnpaddedBytes(length).map(Continuation(stream, _, endHeaders))
   }
-  
-  protected def checkTargetStream(stream: Int) =
-    stream == targetStream
-  
+
   protected def checkStream[S](stream: Int, tpe: Byte) = {
     import Frame.Types._
     ensureS[S](new InvalidStream) {
@@ -150,7 +148,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
                               tpe == CONTINUATION))
         false
       else
-        checkTargetStream(stream)
+        true
     }
   }
   
@@ -162,7 +160,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
         val padded = (flags & DATA.PADDED) != 0
         val endStream = (flags & DATA.END_STREAM) != 0
         if (padded && length < 1) err
-        else decodeData(length, padded, endStream).right
+        else decodeData(length, stream, padded, endStream).right
       
       case Types.HEADERS =>
         val padded = (flags & HEADERS.PADDED) != 0
@@ -173,15 +171,15 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
         if(padded && priority && length < 6) err
         else if(priority && length < 5) err
         else if(padded && length < 1) err
-        else decodeHeaders(length, padded, priority, endStream, endHeaders).right
+        else decodeHeaders(length, stream, padded, priority, endStream, endHeaders).right
       
       case Types.PRIORITY =>
         if (length != 5) err
-        else decodePriority.right
+        else decodePriority(stream).right
       
       case Types.RST_STREAM =>
         if (length != 4) err
-        else decodeResetStream.right
+        else decodeResetStream(stream).right
       
       case Types.SETTINGS =>
         if (length > 0 && (flags & SETTINGS.ACK) != 0) err
@@ -192,7 +190,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
         val padded = (flags & PUSH_PROMISE.PADDED) != 0
         if (padded && length < 5) err
         else if(length < 4) err
-        else decodePushPromise(length, padded, (flags & PUSH_PROMISE.END_HEADERS) != 0).right
+        else decodePushPromise(length, stream, padded, (flags & PUSH_PROMISE.END_HEADERS) != 0).right
       
       case Types.PING =>
         if (length != 8) err
@@ -207,10 +205,10 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
         else decodeWindowUpdate.right
         
       case Types.CONTINUATION =>
-        decodeContinuation(length, (flags & HEADERS.END_HEADERS) != 0).right
+        decodeContinuation(length, stream, (flags & HEADERS.END_HEADERS) != 0).right
 
       case _ =>
-        decodePassthrough(tpe, length, flags).right
+        decodePassthrough(tpe, length, stream, flags).right
     }
     
     // Convert from an invariant StateT of a subtype of Frame to one for Frame
@@ -348,7 +346,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
   }
   
   
-  protected def encodePassthrough(unknown: Unknown): EncodeState = {
+  protected def encodePassthrough(unknown: NonStandard): EncodeState = {
     val SM = stateMonad[ByteStringBuilder]; import SM._
     
     modify { _ ++= unknown.payload }
@@ -362,7 +360,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     val SM = stateMonad[ByteStringBuilder]; import SM._
 
     for {
-      _ <- checkStream(targetStream, frame.tpe)
+      _ <- checkStream(frame.stream, frame.tpe)
       buffer <- get
       _ <- put(ByteString.newBuilder)
       payload <- get
@@ -377,13 +375,13 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
         case f: GoAway       => encodeGoAway(f)
         case f: WindowUpdate => encodeWindowUpdate(f)
         case f: Continuation => encodeContinuation(f)
-        case f: Unknown      => encodePassthrough(f)
+        case f: NonStandard  => encodePassthrough(f)
       }
       _ <- put(buffer)
       _ <- int24.encodeS(payload.length)
       _ <- byte.encodeS(frame.tpe)
       _ <- byte.encodeS(frame.flags)
-      _ <- int.encodeS(targetStream)
+      _ <- int.encodeS(frame.stream)
       _ <- modify { _ ++= payload.result() }
     } yield ()
   }

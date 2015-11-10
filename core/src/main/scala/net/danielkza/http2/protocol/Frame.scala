@@ -5,6 +5,7 @@ import akka.util.ByteString
 sealed trait Frame {
   def tpe: Byte
   def flags: Byte
+  def stream: Int
   def withFlags(flags: Byte): Frame
 }
 
@@ -51,12 +52,13 @@ object Frame {
     }
   }
 
-  case class Unknown(
+  case class NonStandard(
+    override val stream: Int,
     override val tpe: Byte,
     override val flags: Byte,
     payload: ByteString
   ) extends Frame {
-    override def withFlags(flags: Byte): Unknown = copy(flags = flags)
+    override def withFlags(flags: Byte): NonStandard = copy(flags = flags)
   }
 
   sealed abstract class Standard(override val tpe: Byte) extends Frame {
@@ -66,6 +68,7 @@ object Frame {
   case class StreamDependency(exclusive: Boolean, stream: Int, weight: Int)
 
   case class Data(
+    override val stream: Int,
     data: ByteString,
     endStream: Boolean = false,
     padding: Option[ByteString] = None
@@ -81,6 +84,7 @@ object Frame {
   }
 
   case class Headers(
+    override val stream: Int,
     streamDependency: Option[StreamDependency],
     headerFragment: ByteString,
     endStream: Boolean = false,
@@ -102,18 +106,21 @@ object Frame {
   }
 
   case class Priority(
+    override val stream: Int,
     streamDependency: StreamDependency
   ) extends Standard(Types.PRIORITY) {
     override def withFlags(flags: Byte): Priority = this
   }
 
   case class ResetStream(
+    override val stream: Int,
     errorCode: Int
   ) extends Standard(Types.RST_STREAM) {
     override def withFlags(flags: Byte): ResetStream = this
   }
   case class PushPromise(
-    stream: Int,
+    override val stream: Int,
+    promisedStream: Int,
     headerFragment: ByteString,
     endHeaders: Boolean = false,
     padding: Option[ByteString] = None
@@ -132,6 +139,8 @@ object Frame {
     data: ByteString,
     ack: Boolean = false
   ) extends Standard(Types.PING) {
+    override def stream: Int = 0
+
     override def flags: Byte =
       if(ack) Flags.PING.ACK else 0
 
@@ -143,6 +152,8 @@ object Frame {
     settings: List[Setting],
     ack: Boolean = false
   ) extends Standard(Types.SETTINGS) {
+    override def stream: Int = 0
+
     override def flags: Byte =
       if(ack) Flags.SETTINGS.ACK else 0
 
@@ -155,16 +166,21 @@ object Frame {
     errorCode: Int,
     debugData: ByteString
   ) extends Standard(Types.GOAWAY) {
+    override def stream: Int = 0
+
     override def withFlags(flags: Byte): GoAway = this
   }
 
   case class WindowUpdate(
     windowIncrement: Int
   ) extends Standard(Types.WINDOW_UPDATE) {
+    override def stream: Int = 0
+
     override def withFlags(flags: Byte): WindowUpdate= this
   }
 
   case class Continuation(
+    override val stream: Int,
     headerFragment: ByteString,
     endHeaders: Boolean = false
   ) extends Standard(Types.CONTINUATION) {
