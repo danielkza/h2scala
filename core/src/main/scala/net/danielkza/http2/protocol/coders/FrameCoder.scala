@@ -55,17 +55,19 @@ class FrameCoder extends Coder[Frame] {
   
   protected def decodeHeaders(length: Int, stream: Int, padded: Boolean, streamDependency: Boolean, endStream: Boolean,
                             endHeaders: Boolean): DecodeStateT[Headers] = {
-    val SM = stateMonad[ByteString]
+    val SM = stateMonad[ByteString]; import SM._
     
     for {
       bytes <- decodeBytes(length, padded)
       (content, padding) = bytes
+      rem <- get
       headers <- for {
         _ <- SM.put(content)
         streamDependency <- if(streamDependency) decodeStreamDependency.map(Some(_))
                             else SM.pure(None)
-        data <- SM.get
+        data <- get
       } yield Headers(stream, streamDependency, data, endStream = endStream, endHeaders = endHeaders, padding = padding)
+      _ <- put(rem)
     } yield headers
   }
   
@@ -121,18 +123,18 @@ class FrameCoder extends Coder[Frame] {
     } yield GoAway(stream, errorCode, debugData)
   }
 
-  protected def decodeWindowUpdate: DecodeStateT[WindowUpdate] = {  
+  protected def decodeWindowUpdate(stream: Int): DecodeStateT[WindowUpdate] = {
     for {
       window <- int.decodeS
       windowVal = window & 0x7FFFFFFF
       _ <- ensureS(new InvalidWindowUpdate) { windowVal != 0 }
-    } yield WindowUpdate(windowVal)
+    } yield WindowUpdate(stream, windowVal)
   }
   
   protected def decodePassthrough(tpe: Byte, length: Int, stream: Int, flags: Byte) : DecodeStateT[NonStandard] = {
     for {
       content <- decodeUnpaddedBytes(length)
-    } yield NonStandard(stream, tpe, flags, content)
+    } yield Frame.NonStandard(stream, tpe, flags, content)
   }
   
   protected def decodeContinuation(length: Int, stream: Int, endHeaders: Boolean): DecodeStateT[Continuation] = {
@@ -202,7 +204,7 @@ class FrameCoder extends Coder[Frame] {
         
       case Types.WINDOW_UPDATE =>
         if (length != 4) err
-        else decodeWindowUpdate.right
+        else decodeWindowUpdate(stream).right
         
       case Types.CONTINUATION =>
         decodeContinuation(length, stream, (flags & HEADERS.END_HEADERS) != 0).right
@@ -238,10 +240,10 @@ class FrameCoder extends Coder[Frame] {
 
     for {
       partialResult <- decodeHeader
-      (handler, remLength) = partialResult
+      (payloadHandler, remLength) = partialResult
       remInput <- get
-      _ <- ensureS(new InvalidFrameSize) { remInput.length < remLength }
-      result <- handler
+      _ <- ensureS(new InvalidFrameSize) { remInput.length >= remLength }
+      result <- payloadHandler
     } yield result
   }
   
@@ -308,8 +310,8 @@ class FrameCoder extends Coder[Frame] {
 
     encodeBytes(pushPromise.padding) {
       for {
-        _ <- ensureS(new InvalidStream) { pushPromise.stream >= 0 }
-        _ <- int.encodeS(pushPromise.stream)
+        _ <- ensureS(new InvalidStream) { pushPromise.promisedStream >= 0 }
+        _ <- int.encodeS(pushPromise.promisedStream)
         _ <- modify { _ ++= pushPromise.headerFragment }
       } yield ()
     }

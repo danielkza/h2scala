@@ -12,10 +12,6 @@ import org.specs2.specification.core.Fragments
 import net.danielkza.http2.TestHelpers
 import net.danielkza.http2.protocol.{Setting, Frame}
 
-private class StreamIgnoringFrameCoder extends FrameCoder(0) {
-  override protected def checkTargetStream(stream: Int) = true
-}
-
 class FrameCoderTest extends Specification with TestHelpers {
   sealed trait Case {
     def wire: ByteString
@@ -28,47 +24,47 @@ class FrameCoderTest extends Specification with TestHelpers {
   implicit def bsJson: DecodeJson[ByteString] =
     DecodeJson(c => c.as[String].map(ByteString(_)))
   
-  def frameJson(tpe: Byte): DecodeJson[Frame] = DecodeJson(c => {
+  def frameJson(tpe: Byte, stream: Int): DecodeJson[Frame] = DecodeJson(c => {
     import Frame._
     tpe match {
       case Types.DATA => for {
         padLen  <- c.get[Option[Int]]("padding_length")
         data    <- c.get[ByteString]("data")
         padding <- c.get[Option[ByteString]]("padding")
-      } yield Data(data, padding = padding)
+      } yield Data(stream, data, padding = padding)
       
       case Types.HEADERS => for {
         padLen    <- c.get[Option[Int]]("padding_length")
-        stream    <- c.get[Option[Int]]("stream_dependency")
+        depStream <- c.get[Option[Int]]("stream_dependency")
         exclusive <- c.get[Option[Boolean]]("exclusive")
         weight    <- c.get[Option[Int]]("weight")
         frag      <- c.get[ByteString]("header_block_fragment")
         padding   <- c.get[Option[ByteString]]("padding")
       } yield {
-        val streamDependency = stream.map { s => StreamDependency(exclusive.get, s, weight.get.toByte) }
-        Headers(streamDependency, frag, padding = padding)
+        val streamDependency = depStream.map { s => StreamDependency(exclusive.get, s, weight.get.toByte) }
+        Headers(stream, streamDependency, frag, padding = padding)
       }
       
       case Types.PRIORITY => for {
-        stream    <- c.get[Int]("stream_dependency")
+        targetStream    <- c.get[Int]("stream_dependency")
         weight    <- c.get[Int]("weight")
         exclusive <- c.get[Boolean]("exclusive")
-      } yield Priority(StreamDependency(exclusive, stream, weight.toByte))
+      } yield Priority(stream, StreamDependency(exclusive, targetStream, weight.toByte))
       
       case Types.RST_STREAM => for {
         error <- c.get[Int]("error_code")
-      } yield ResetStream(error)
+      } yield ResetStream(stream, error)
       
       case Types.SETTINGS => for {
         settings <- c.get[List[(Int, Int)]]("settings")
       } yield Settings(settings.map(t => Setting(t._1.toShort, t._2)))
       
       case Types.PUSH_PROMISE => for {
-        padLen  <- c.get[Option[Int]]("padding_length")
-        stream  <- c.get[Int]("promised_stream_id")
-        frag    <- c.get[ByteString]("header_block_fragment")
-        padding <- c.get[Option[ByteString]]("padding")
-      } yield PushPromise(stream, frag, padding = padding)
+        padLen          <- c.get[Option[Int]]("padding_length")
+        promisedStream  <- c.get[Int]("promised_stream_id")
+        frag            <- c.get[ByteString]("header_block_fragment")
+        padding         <- c.get[Option[ByteString]]("padding")
+      } yield PushPromise(stream, promisedStream, frag, padding = padding)
       
       case Types.PING => for {
         data <- c.get[ByteString]("opaque_data")
@@ -82,11 +78,11 @@ class FrameCoderTest extends Specification with TestHelpers {
       
       case Types.CONTINUATION => for {
         frag <- c.get[ByteString]("header_block_fragment")
-      } yield Continuation(frag)
+      } yield Continuation(stream, frag)
       
       case Types.WINDOW_UPDATE => for {
         increment <- c.get[Int]("window_size_increment")
-      } yield WindowUpdate(increment)
+      } yield WindowUpdate(stream, increment)
 
       case _ =>
         DecodeResult.fail(s"Unknown frame type $tpe", c.history)
@@ -104,7 +100,7 @@ class FrameCoderTest extends Specification with TestHelpers {
         flags   <- (c --\ "frame" --\ "flags").as[Int].map(_.toByte)
         stream  <- (c --\ "frame" --\ "stream_identifier").as[Int]
         tpe     <- (c --\ "frame" --\ "type").as[Int].map(_.toByte)
-        payload <- frameJson(tpe.toByte).tryDecode(c --\ "frame" --\ "frame_payload").map(_.withFlags(flags))
+        payload <- frameJson(tpe.toByte, stream).tryDecode(c --\ "frame" --\ "frame_payload").map(_.withFlags(flags))
       } yield OkCase(wire, description, length, flags.toByte, stream, tpe, payload): Case
     }
   } yield result)
@@ -114,7 +110,7 @@ class FrameCoderTest extends Specification with TestHelpers {
       caseDirectory <- sys.props.get("http2.frame_tests_dir").map(\/-(_)).getOrElse {
         -\/("Failed to find HTTP2 Frame Test Cases. Make sure the `http2.frame_tests_dir` system property is correct")
       }
-      val files = caseDirectory.toFile.listRecursively.filter(_.name.endsWith(".json")).toList
+      files = caseDirectory.toFile.listRecursively.filter(_.name.endsWith(".json")).toList
       results <- files.map { file =>
         Parse.decodeValidation[Case](file.contentAsString).disjunction.leftMap { error =>
           file.fullPath + ": " + error
@@ -125,11 +121,12 @@ class FrameCoderTest extends Specification with TestHelpers {
   
   "FrameCoder" should {
     val cases = readCases()
+    val coder = new FrameCoder
     
     cases map { cases =>
       "encode" in Fragments.foreach(cases) {
         case c: OkCase => describe(c.description) >> {
-          new FrameCoder(c.stream).encode(c.payload) must_== \/-(c.wire)
+          coder.encode(c.payload) must_== \/-(c.wire)
         }
         case _ =>
           Fragments.empty
@@ -139,16 +136,14 @@ class FrameCoderTest extends Specification with TestHelpers {
     }
         
     cases map { cases =>
-      val errorCoder = new StreamIgnoringFrameCoder
-
       "decode" in Fragments.foreach(cases) {
         case c: OkCase => describe(c.description) >> {
-          new FrameCoder(c.stream).decodeS.eval(c.wire) must beLike { case \/-(frame) =>
-            (frame must_== c.payload) and (frame.flags must_== c.flags)
+          coder.decodeS.run(c.wire) must beLike { case \/-((rem, frame)) =>
+            (rem must beEmpty) and  (frame must_== c.payload) and (frame.flags must_== c.flags)
           }
         }
         case c: ErrorCase => describe(c.description) >> {
-          errorCoder.decodeS.eval(c.wire) must beLike { case -\/(error) =>
+          coder.decodeS.eval(c.wire) must beLike { case -\/(error) =>
             c.errors must contain(error.code)
           }
         }
