@@ -31,13 +31,13 @@ class FrameCoderTest extends Specification with TestHelpers {
   def frameJson(tpe: Byte): DecodeJson[Frame] = DecodeJson(c => {
     import Frame._
     tpe match {
-      case Type.DATA => for {
+      case Types.DATA => for {
         padLen  <- c.get[Option[Int]]("padding_length")
         data    <- c.get[ByteString]("data")
         padding <- c.get[Option[ByteString]]("padding")
       } yield Data(data, padding = padding)
       
-      case Type.HEADERS => for {
+      case Types.HEADERS => for {
         padLen    <- c.get[Option[Int]]("padding_length")
         stream    <- c.get[Option[Int]]("stream_dependency")
         exclusive <- c.get[Option[Boolean]]("exclusive")
@@ -49,42 +49,42 @@ class FrameCoderTest extends Specification with TestHelpers {
         Headers(streamDependency, frag, padding = padding)
       }
       
-      case Type.PRIORITY => for {
+      case Types.PRIORITY => for {
         stream    <- c.get[Int]("stream_dependency")
         weight    <- c.get[Int]("weight")
         exclusive <- c.get[Boolean]("exclusive")
       } yield Priority(StreamDependency(exclusive, stream, weight.toByte))
       
-      case Type.RST_STREAM => for {
+      case Types.RST_STREAM => for {
         error <- c.get[Int]("error_code")
       } yield ResetStream(error)
       
-      case Type.SETTINGS => for {
+      case Types.SETTINGS => for {
         settings <- c.get[List[(Int, Int)]]("settings")
       } yield Settings(settings.map(t => t._1.toShort -> t._2))
       
-      case Type.PUSH_PROMISE => for {
+      case Types.PUSH_PROMISE => for {
         padLen  <- c.get[Option[Int]]("padding_length")
         stream  <- c.get[Int]("promised_stream_id")
         frag    <- c.get[ByteString]("header_block_fragment")
         padding <- c.get[Option[ByteString]]("padding")
       } yield PushPromise(stream, frag, padding = padding)
       
-      case Type.PING => for {
+      case Types.PING => for {
         data <- c.get[ByteString]("opaque_data")
       } yield Ping(data)
         
-      case Type.GOAWAY => for {
+      case Types.GOAWAY => for {
         stream    <- c.get[Int]("last_stream_id")
         error     <- c.get[Int]("error_code")
         debugData <- c.get[ByteString]("additional_debug_data")
       } yield GoAway(stream ,error, debugData)
       
-      case Type.CONTINUATION => for {
+      case Types.CONTINUATION => for {
         frag <- c.get[ByteString]("header_block_fragment")
       } yield Continuation(frag)
       
-      case Type.WINDOW_UPDATE => for {
+      case Types.WINDOW_UPDATE => for {
         increment <- c.get[Int]("window_size_increment")
       } yield WindowUpdate(increment)
 
@@ -124,17 +124,15 @@ class FrameCoderTest extends Specification with TestHelpers {
   }
   
   "FrameCoder" should {
-    
     val cases = readCases()
     
     cases map { cases =>
       "encode" in Fragments.foreach(cases) {
-        case c: OkCase => 
-          val cs = c
-          c.description >> {
-            new FrameCoder(c.stream).encode(c.payload) must_=== \/-(c.wire)
-          }
-        case _ => Fragments.empty
+        case c: OkCase => describe(c.description) >> {
+          new FrameCoder(c.stream).encode(c.payload) must_== \/-(c.wire)
+        }
+        case _ =>
+          Fragments.empty
       }
     } valueOr { error =>
       Fragments { "encode" in skipped("Error: " + error) }
@@ -142,21 +140,18 @@ class FrameCoderTest extends Specification with TestHelpers {
         
     cases map { cases =>
       val errorCoder = new StreamIgnoringFrameCoder
+
       "decode" in Fragments.foreach(cases) {
-        case c: OkCase => 
-          val cs = c
-          c.description >> {
+        case c: OkCase => describe(c.description) >> {
           new FrameCoder(c.stream).decodeS.eval(c.wire) must beLike { case \/-(frame) =>
-              frame === c.payload and frame.flags === c.flags
-            }
+            (frame must_== c.payload) and (frame.flags must_== c.flags)
           }
-        case c: ErrorCase =>
-          val cs = c
-          c.description >> {
-            errorCoder.decodeS.eval(c.wire) must beLike { case -\/(error) =>
-              c.errors must contain(error.code)
-            }
+        }
+        case c: ErrorCase => describe(c.description) >> {
+          errorCoder.decodeS.eval(c.wire) must beLike { case -\/(error) =>
+            c.errors must contain(error.code)
           }
+        }
       }
     } valueOr { error =>
       Fragments { "decode" in skipped("Error: " + error) }

@@ -6,7 +6,7 @@ import scalaz.syntax.either._
 import scalaz.syntax.traverse._
 import akka.util.{ByteStringBuilder, ByteString}
 import net.danielkza.http2.Coder
-import net.danielkza.http2.protocol.{HTTP2Error, Frame}
+import net.danielkza.http2.protocol.{HTTP2Error, Frame, Setting}
 
 class FrameCoder(targetStream: Int) extends Coder[Frame] {
   import Frame._
@@ -77,7 +77,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     int.decodeS.map(ResetStream)
   }
   
-  protected def decodeSingleSetting: DecodeStateT[(Short, Int)] = {
+  protected def decodeSingleSetting: DecodeStateT[Setting] = {
     for {
       identifier <- short.decodeS
       value <- int.decodeS
@@ -141,7 +141,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     stream == targetStream
   
   protected def checkStream[S](stream: Int, tpe: Byte) = {
-    import Frame.Type._
+    import Frame.Types._
     ensureS[S](InvalidStream) {
       if(stream != 0 && (tpe == SETTINGS || tpe == PING || tpe == GOAWAY))
         false
@@ -157,13 +157,13 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     def err = HTTP2Error.InvalidFrameSize.left
     
     val maybeHandler = tpe match {
-      case Type.DATA =>
+      case Types.DATA =>
         val padded = (flags & DATA.PADDED) != 0
         val endStream = (flags & DATA.END_STREAM) != 0
         if (padded && length < 1) err
         else decodeData(length, padded, endStream).right
       
-      case Type.HEADERS =>
+      case Types.HEADERS =>
         val padded = (flags & HEADERS.PADDED) != 0
         val priority = (flags & HEADERS.PRIORITY) != 0
         val endStream = (flags & HEADERS.END_STREAM) != 0
@@ -174,38 +174,38 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
         else if(padded && length < 1) err
         else decodeHeaders(length, padded, priority, endStream, endHeaders).right
       
-      case Type.PRIORITY =>
+      case Types.PRIORITY =>
         if (length != 5) err
         else decodePriority.right
       
-      case Type.RST_STREAM =>
+      case Types.RST_STREAM =>
         if (length != 4) err
         else decodeResetStream.right
       
-      case Type.SETTINGS =>
+      case Types.SETTINGS =>
         if (length > 0 && (flags & SETTINGS.ACK) != 0) err
         else if (length % 6 != 0) err
         else decodeSettings(length / 6, (flags & SETTINGS.ACK) != 0).right
       
-      case Type.PUSH_PROMISE =>
+      case Types.PUSH_PROMISE =>
         val padded = (flags & PUSH_PROMISE.PADDED) != 0
         if (padded && length < 5) err
         else if(length < 4) err
         else decodePushPromise(length, padded, (flags & PUSH_PROMISE.END_HEADERS) != 0).right
       
-      case Type.PING =>
+      case Types.PING =>
         if (length != 8) err
         else decodePing((flags & PING.ACK) != 0).right
       
-      case Type.GOAWAY =>
+      case Types.GOAWAY =>
         if (length < 8) err
         else decodeGoAway(length).right
         
-      case Type.WINDOW_UPDATE =>
+      case Types.WINDOW_UPDATE =>
         if (length != 4) err
         else decodeWindowUpdate.right
         
-      case Type.CONTINUATION =>
+      case Types.CONTINUATION =>
         decodeContinuation(length, (flags & HEADERS.END_HEADERS) != 0).right
 
       case _ =>
