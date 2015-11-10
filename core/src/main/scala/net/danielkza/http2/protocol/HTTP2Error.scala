@@ -2,10 +2,16 @@ package net.danielkza.http2.protocol
 
 import akka.util.ByteString
 
-trait HTTP2Error {
+trait HTTP2Error extends Exception {
   def code: Int
   def debugData: Option[ByteString]
+
+  final def toException(message: String = null, cause: Throwable = null): HTTP2Exception =
+    new HTTP2Exception(this, message, cause)
 }
+
+class HTTP2Exception(error: HTTP2Error, message: String = null, cause: Throwable = null)
+  extends Exception(message, cause)
 
 object HTTP2Error {
   object Codes {
