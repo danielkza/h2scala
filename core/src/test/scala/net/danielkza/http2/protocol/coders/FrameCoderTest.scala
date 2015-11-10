@@ -10,7 +10,7 @@ import better.files._
 import org.specs2.mutable.Specification
 import org.specs2.specification.core.Fragments
 import net.danielkza.http2.TestHelpers
-import net.danielkza.http2.protocol.{HTTP2Error, Frame}
+import net.danielkza.http2.protocol.{Setting, Frame}
 
 private class StreamIgnoringFrameCoder extends FrameCoder(0) {
   override protected def checkTargetStream(stream: Int) = true
@@ -61,7 +61,7 @@ class FrameCoderTest extends Specification with TestHelpers {
       
       case Types.SETTINGS => for {
         settings <- c.get[List[(Int, Int)]]("settings")
-      } yield Settings(settings.map(t => t._1.toShort -> t._2))
+      } yield Settings(settings.map(t => Setting(t._1.toShort, t._2)))
       
       case Types.PUSH_PROMISE => for {
         padLen  <- c.get[Option[Int]]("padding_length")

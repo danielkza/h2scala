@@ -1,14 +1,14 @@
 package net.danielkza.http2.protocol
 
-sealed trait HTTP2Error {
-  def code: Int = 0
+import akka.util.ByteString
+
+trait HTTP2Error {
+  def code: Int
+  def debugData: Option[ByteString]
 }
 
-sealed abstract class KnownHTTP2Error(override val code: Int)
-  extends HTTP2Error
-
 object HTTP2Error {
-  object Values {
+  object Codes {
     final val NO_ERROR            = 0x0
     final val PROTOCOL_ERROR      = 0x1
     final val INTERNAL_ERROR      = 0x2
@@ -24,10 +24,30 @@ object HTTP2Error {
     final val INADEQUATE_SECURITY = 0xc
     final val HTTP_1_1_REQUIRED   = 0xd
   }
+  import Codes._
 
-  case class IncompleteInput(received: Int, expected: Int) extends KnownHTTP2Error(Values.FRAME_SIZE_ERROR)
-  case object InvalidStream extends KnownHTTP2Error(Values.PROTOCOL_ERROR)
-  case object InvalidFrameSize extends KnownHTTP2Error(Values.FRAME_SIZE_ERROR)
-  case object InvalidPadding extends KnownHTTP2Error(Values.PROTOCOL_ERROR)
-  case object InvalidWindowUpdate extends KnownHTTP2Error(Values.PROTOCOL_ERROR)
+  class Standard(override val code: Int, override val debugData: Option[ByteString] = None) extends HTTP2Error
+  object Standard {
+    def unapply(error: HTTP2Error): Option[(Int, Option[ByteString])] = {
+      if(error.code >= PROTOCOL_ERROR && error.code <= HTTP_1_1_REQUIRED)
+        Some(error.code, error.debugData)
+      else
+        None
+    }
+  }
+
+  class InvalidStream(debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
+  class InvalidFrameSize(debugData: Option[ByteString] = None) extends Standard(FRAME_SIZE_ERROR)
+  class InvalidWindowUpdate(debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
+  class InvalidPadding(debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
+  class CompressionError(debugData: Option[ByteString] = None) extends Standard(COMPRESSION_ERROR)
+
+  object NonStandard {
+    def unapply(error: HTTP2Error): Option[(Int, Option[ByteString])] = {
+      Standard.unapply(error) match {
+        case Some(_) => None
+        case None => Some(error.code, error.debugData)
+      }
+    }
+  }
 }

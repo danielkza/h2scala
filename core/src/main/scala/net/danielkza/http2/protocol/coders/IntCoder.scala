@@ -12,7 +12,7 @@ abstract class IntCoder[T] extends Coder[T] {
     try {
       f(bs)
     } catch { case e: IndexOutOfBoundsException =>
-      HTTP2Error.IncompleteInput(-1, -1).left
+      (new HTTP2Error.InvalidFrameSize).left
     }
   } 
 }

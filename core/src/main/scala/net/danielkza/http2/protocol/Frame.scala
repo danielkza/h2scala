@@ -11,6 +11,46 @@ sealed trait Frame {
 object Frame {
   final val HEADER_LENGTH = 9
 
+  object Types {
+    final val DATA: Byte          = 0x0
+    final val HEADERS: Byte       = 0x1
+    final val PRIORITY: Byte      = 0x2
+    final val RST_STREAM: Byte    = 0x3
+    final val SETTINGS: Byte      = 0x4
+    final val PUSH_PROMISE: Byte  = 0x5
+    final val PING: Byte          = 0x6
+    final val GOAWAY: Byte        = 0x7
+    final val WINDOW_UPDATE: Byte = 0x8
+    final val CONTINUATION: Byte  = 0x9
+  }
+
+  object Flags {
+    object DATA {
+      final val END_STREAM: Byte = 0x1
+      final val PADDED: Byte     = 0x8
+    }
+
+    object HEADERS {
+      final val END_STREAM: Byte  = 0x1
+      final val END_HEADERS: Byte = 0x4
+      final val PADDED: Byte      = 0x8
+      final val PRIORITY: Byte    = 0x20
+    }
+
+    object PUSH_PROMISE {
+      final val END_HEADERS: Byte = 0x4
+      final val PADDED: Byte      = 0x8
+    }
+
+    object PING {
+      final val ACK: Byte = 0x1
+    }
+
+    object SETTINGS {
+      final val ACK: Byte = 0x1
+    }
+  }
+
   case class Unknown(
     override val tpe: Byte,
     override val flags: Byte,
@@ -131,45 +171,4 @@ object Frame {
     override def withFlags(flags: Byte): Continuation = this
   }
 
-
-
-  object Types {
-    final val DATA: Byte          = 0x0
-    final val HEADERS: Byte       = 0x1
-    final val PRIORITY: Byte      = 0x2
-    final val RST_STREAM: Byte    = 0x3
-    final val SETTINGS: Byte      = 0x4
-    final val PUSH_PROMISE: Byte  = 0x5
-    final val PING: Byte          = 0x6
-    final val GOAWAY: Byte        = 0x7
-    final val WINDOW_UPDATE: Byte = 0x8
-    final val CONTINUATION: Byte  = 0x9
-  }
-  
-  object Flags {
-    object DATA {
-      final val END_STREAM: Byte = 0x1
-      final val PADDED: Byte     = 0x8
-    }
-    
-    object HEADERS {
-      final val END_STREAM: Byte  = 0x1
-      final val END_HEADERS: Byte = 0x4
-      final val PADDED: Byte      = 0x8
-      final val PRIORITY: Byte    = 0x20
-    }
-    
-    object PUSH_PROMISE {
-      final val END_HEADERS: Byte = 0x4
-      final val PADDED: Byte      = 0x8
-    }
-    
-    object PING {
-      final val ACK: Byte = 0x1
-    }
-    
-    object SETTINGS {
-      final val ACK: Byte = 0x1
-    }
-  }
 }

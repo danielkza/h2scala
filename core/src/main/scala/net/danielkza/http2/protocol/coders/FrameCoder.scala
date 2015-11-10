@@ -7,6 +7,7 @@ import scalaz.syntax.traverse._
 import akka.util.{ByteStringBuilder, ByteString}
 import net.danielkza.http2.Coder
 import net.danielkza.http2.protocol.{HTTP2Error, Frame, Setting}
+import HTTP2Error._
 
 class FrameCoder(targetStream: Int) extends Coder[Frame] {
   import Frame._
@@ -41,10 +42,10 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
         paddingLen <- if(padded) byte.decodeS
                       else pure(0: Byte)
         dataLen = length - paddingLen - 1
-        _ <- ensureS(InvalidPadding) { dataLen > paddingLen }
+        _ <- ensureS(new InvalidPadding) { dataLen > paddingLen }
         data <- takeS(dataLen)
         padding <- takeS(paddingLen)
-        _ <- ensureS(InvalidFrameSize) { data.length == dataLen && padding.length == paddingLen }
+        _ <- ensureS(new InvalidFrameSize) { data.length == dataLen && padding.length == paddingLen }
       } yield data -> (Some(padding): Option[ByteString])
     }
   }
@@ -81,7 +82,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     for {
       identifier <- short.decodeS
       value <- int.decodeS
-    } yield identifier -> value
+    } yield Setting(identifier, value)
   }
 
   protected def decodeSettings(num: Int, ack: Boolean): DecodeStateT[Settings] = {
@@ -97,7 +98,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
       rem <- get
       _ <- put(content)
       stream <- int.decodeS
-      _ <- ensureS(InvalidStream) { stream > 0 && stream % 2 == 0 }
+      _ <- ensureS(new InvalidStream) { stream > 0 && stream % 2 == 0 }
       data <- get
       _ <- put(rem)
     } yield PushPromise(stream, data, endHeaders, padding)
@@ -112,10 +113,10 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
   protected def decodeGoAway(length: Int): DecodeStateT[GoAway] = {
     for {
       stream <- int.decodeS
-      _ <- ensureS(InvalidStream) { stream >= 0 }
+      _ <- ensureS(new InvalidStream) { stream >= 0 }
       errorCode <- int.decodeS
       debugData <- takeS(length - 8)
-      _ <- ensureS(InvalidFrameSize) { debugData.length == length - 8 }
+      _ <- ensureS(new InvalidFrameSize) { debugData.length == length - 8 }
     } yield GoAway(stream, errorCode, debugData)
   }
 
@@ -123,7 +124,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     for {
       window <- int.decodeS
       windowVal = window & 0x7FFFFFFF
-      _ <- ensureS(InvalidWindowUpdate) { windowVal != 0 } 
+      _ <- ensureS(new InvalidWindowUpdate) { windowVal != 0 }
     } yield WindowUpdate(windowVal)
   }
   
@@ -142,7 +143,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
   
   protected def checkStream[S](stream: Int, tpe: Byte) = {
     import Frame.Types._
-    ensureS[S](InvalidStream) {
+    ensureS[S](new InvalidStream) {
       if(stream != 0 && (tpe == SETTINGS || tpe == PING || tpe == GOAWAY))
         false
       else if(stream == 0 && (tpe == DATA || tpe == HEADERS || tpe == RST_STREAM || tpe == PRIORITY ||
@@ -154,7 +155,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
   }
   
   def payloadDecoder(tpe: Byte, length: Int, flags: Byte, stream: Int): \/[HTTP2Error, DecodeStateT[Frame]] = {
-    def err = HTTP2Error.InvalidFrameSize.left
+    def err = (new InvalidFrameSize).left
     
     val maybeHandler = tpe match {
       case Types.DATA =>
@@ -241,7 +242,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
       partialResult <- decodeHeader
       (handler, remLength) = partialResult
       remInput <- get
-      _ <- ensureS(IncompleteInput(remInput.length, remLength)) { remInput.length < remLength }
+      _ <- ensureS(new InvalidFrameSize) { remInput.length < remLength }
       result <- handler
     } yield result
   }
@@ -259,7 +260,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     
     padding.map { padding =>       
       for {
-        _ <- ensureS(InvalidPadding) { padding.length < 256 }
+        _ <- ensureS(new InvalidPadding) { padding.length < 256 }
         _ <- byte.encodeS(padding.length.toByte)
         _ <- f
         _ <- modify { _ ++= padding }
@@ -296,7 +297,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
   
   protected def encodeSettings(settings: Settings): EncodeState = {
     type S[T] = StateTES[T, Error, ByteStringBuilder]
-    settings.settings.traverse_[S] { case (identifier, value) =>
+    settings.settings.traverse_[S] { case Setting(identifier, value) =>
       for {
         _ <- short.encodeS(identifier)
         _ <- int.encodeS(value)
@@ -309,7 +310,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
 
     encodeBytes(pushPromise.padding) {
       for {
-        _ <- ensureS(InvalidStream) { pushPromise.stream >= 0 }
+        _ <- ensureS(new InvalidStream) { pushPromise.stream >= 0 }
         _ <- int.encodeS(pushPromise.stream)
         _ <- modify { _ ++= pushPromise.headerFragment }
       } yield ()
@@ -320,7 +321,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     val SM = stateMonad[ByteStringBuilder]; import SM._
     
     for {
-      _ <- ensureS(InvalidFrameSize) { ping.data.length == 8 }
+      _ <- ensureS(new InvalidFrameSize) { ping.data.length == 8 }
       _ <- encodeBytes(None) { modify { _ ++= ping.data } }
     } yield ()
   }
@@ -329,7 +330,7 @@ class FrameCoder(targetStream: Int) extends Coder[Frame] {
     val SM = stateMonad[ByteStringBuilder]; import SM._
     
     for {
-      _ <- ensureS(InvalidStream) { goAway.lastStream >= 0 }
+      _ <- ensureS(new InvalidStream) { goAway.lastStream >= 0 }
       _ <- int.encodeS(goAway.lastStream)
       _ <- int.encodeS(goAway.errorCode)
       _ <- modify { _ ++= goAway.debugData }
