@@ -170,12 +170,16 @@ object Frame {
 
     override def withFlags(flags: Byte): GoAway = this
   }
+  object GoAway {
+    def apply(lastStream: Int, error: HTTP2Error = new HTTP2Error.NoError): GoAway = {
+      GoAway(lastStream, error.code, error.debugData.getOrElse(ByteString.empty))
+    }
+  }
 
   case class WindowUpdate(
+    override val stream: Int,
     windowIncrement: Int
   ) extends Standard(Types.WINDOW_UPDATE) {
-    override def stream: Int = 0
-
     override def withFlags(flags: Byte): WindowUpdate= this
   }
 

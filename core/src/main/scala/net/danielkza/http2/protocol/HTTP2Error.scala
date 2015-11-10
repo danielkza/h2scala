@@ -42,6 +42,7 @@ object HTTP2Error {
     }
   }
 
+  class NoError extends Standard(NO_ERROR)
   class InvalidStream(debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
   class InvalidFrameSize(debugData: Option[ByteString] = None) extends Standard(FRAME_SIZE_ERROR)
   class InvalidWindowUpdate(debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
