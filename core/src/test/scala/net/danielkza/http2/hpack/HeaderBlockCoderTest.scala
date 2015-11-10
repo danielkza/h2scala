@@ -10,7 +10,7 @@ import org.specs2.specification.Scope
 
 import akka.util.ByteString
 import net.danielkza.http2.TestHelpers
-import net.danielkza.http2.hpack.coders.HeaderCoder
+import net.danielkza.http2.hpack.coders.{HeaderBlockCoder, HeaderCoder}
 
 class HeaderBlockCoderTest extends Specification with DataTables with TestHelpers {  
   import HeaderRepr._

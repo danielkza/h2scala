@@ -16,7 +16,8 @@ abstract class Coder[T] {
   
   final type DecodeStateTE[TT, E] = StateTES[TT, E, ByteString]
   final type DecodeStateT[TT] = DecodeStateTE[TT, Error]
-  
+  final type DecodeState = DecodeStateT[T]
+
   protected implicit def stateMonad[S] = StateT.stateTMonadState[S, \/[Error, ?]]
   
   def encode(value: T, stream: ByteStringBuilder): \/[Error, Unit]

@@ -1,11 +1,12 @@
-package net.danielkza.http2.hpack
+package net.danielkza.http2.hpack.coders
+
+import akka.util.{ByteString, ByteStringBuilder}
+import net.danielkza.http2.Coder
+import net.danielkza.http2.hpack._
 
 import scalaz._
 import scalaz.syntax.either._
 import scalaz.syntax.std.option._
-import akka.util.{ByteStringBuilder, ByteString}
-import net.danielkza.http2.Coder
-import net.danielkza.http2.hpack.coders.HeaderCoder
 
 class HeaderBlockCoder(maxCapacity: Int = 4096,
                        private val headerCoder: HeaderCoder = new HeaderCoder())
@@ -64,8 +65,8 @@ extends Coder[Seq[Header]] {
   private def processHeaderRepr(headerRepr: HeaderRepr)
     : \/[HeaderError, (Option[Header], DynamicTable)] =
   {
-    import HeaderRepr._
     import Header._
+    import HeaderRepr._
     
     headerRepr match {
       case DynamicTableSizeUpdate(size) =>
