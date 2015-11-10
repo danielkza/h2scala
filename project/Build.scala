@@ -11,13 +11,16 @@ object BuildSettings {
       Resolver.sonatypeRepo("snapshots")
     ),
     libraryDependencies ++= Seq(
-      "org.scala-lang"             %  "scala-reflect"   % scalaVersion.value,
-      "org.scalaz"                 %% "scalaz-core"     % "7.1.4",
-      "com.chuusai"                %% "shapeless"       % "2.2.5",
-      "com.typesafe.akka"          %% "akka-actor"      % "2.4.0",
-      "com.github.pathikrit"       %% "better-files"    % "2.13.0",
-      "io.argonaut"                %% "argonaut"        % "6.1-M4"  % "test",
-      "org.specs2"                 %% "specs2-core"     % "3.6.4"  % "test"
+      "org.scala-lang"             %  "scala-reflect"                    % scalaVersion.value,
+      "org.scalaz"                 %% "scalaz-core"                      % "7.1.4",
+      "com.chuusai"                %% "shapeless"                        % "2.2.5",
+      "com.typesafe.akka"          %% "akka-actor"                       % "2.4.0",
+      "com.typesafe.akka"          %% "akka-stream-experimental"         % "2.0-M1",
+      "com.github.pathikrit"       %% "better-files"                     % "2.13.0",
+      "org.specs2"                 %% "specs2-core"                      % "3.6.4"  % "test",
+      "io.argonaut"                %% "argonaut"                         % "6.1-M4" % "test",
+      "com.typesafe.akka"          %% "akka-stream-testkit-experimental" % "2.0-M1" % "test"
+
     ),
     scalacOptions in Test ++= Seq("-Yrangepos"), // for Specs2
     testOptions in Test += Tests.Setup { _ =>
@@ -30,7 +33,6 @@ object BuildSettings {
 
 object MyBuild extends Build {
   import BuildSettings._
-
 
   lazy val core: Project = Project("core", file("core"),
     settings = buildSettings) dependsOn(macros)
