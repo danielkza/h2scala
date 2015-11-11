@@ -11,6 +11,7 @@ sealed trait Frame {
 
 object Frame {
   final val HEADER_LENGTH = 9
+  final val DEFAULT_MAX_FRAME_SIZE = 16384
 
   object Types {
     final val DATA: Byte          = 0x0
@@ -171,7 +172,7 @@ object Frame {
     override def withFlags(flags: Byte): GoAway = this
   }
   object GoAway {
-    def apply(lastStream: Int, error: HTTP2Error = new HTTP2Error.NoError): GoAway = {
+    def apply(lastStream: Int, error: HTTP2Error = HTTP2Error.NoError): GoAway = {
       GoAway(lastStream, error.code, error.debugData.getOrElse(ByteString.empty))
     }
   }

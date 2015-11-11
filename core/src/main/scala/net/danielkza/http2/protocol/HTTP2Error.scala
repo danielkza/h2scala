@@ -8,6 +8,8 @@ trait HTTP2Error extends Exception {
 
   final def toException(message: String = null, cause: Throwable = null): HTTP2Exception =
     new HTTP2Exception(this, message, cause)
+
+  final def toException: HTTP2Exception = toException()
 }
 
 class HTTP2Exception(error: HTTP2Error, message: String = null, cause: Throwable = null)
@@ -42,12 +44,13 @@ object HTTP2Error {
     }
   }
 
-  class NoError extends Standard(NO_ERROR)
-  class InvalidStream(debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
-  class InvalidFrameSize(debugData: Option[ByteString] = None) extends Standard(FRAME_SIZE_ERROR)
-  class InvalidWindowUpdate(debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
-  class InvalidPadding(debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
-  class CompressionError(debugData: Option[ByteString] = None) extends Standard(COMPRESSION_ERROR)
+  case object NoError extends Standard(NO_ERROR)
+  case class InvalidStream(override val debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
+  case class InvalidFrameSize(override val debugData: Option[ByteString] = None) extends Standard(FRAME_SIZE_ERROR)
+  case class InvalidWindowUpdate(override val debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
+  case class InvalidPadding(override val debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
+  case class ContinuationError(override val debugData: Option[ByteString] = None) extends Standard(PROTOCOL_ERROR)
+  case class CompressionError(override val debugData: Option[ByteString] = None) extends Standard(COMPRESSION_ERROR)
 
   object NonStandard {
     def unapply(error: HTTP2Error): Option[(Int, Option[ByteString])] = {
