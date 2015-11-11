@@ -46,9 +46,9 @@ class FrameCoderTest extends Specification with TestHelpers {
       }
       
       case Types.PRIORITY => for {
-        targetStream    <- c.get[Int]("stream_dependency")
-        weight    <- c.get[Int]("weight")
-        exclusive <- c.get[Boolean]("exclusive")
+        targetStream <- c.get[Int]("stream_dependency")
+        weight       <- c.get[Int]("weight")
+        exclusive    <- c.get[Boolean]("exclusive")
       } yield Priority(stream, StreamDependency(exclusive, targetStream, weight.toByte))
       
       case Types.RST_STREAM => for {
@@ -60,10 +60,10 @@ class FrameCoderTest extends Specification with TestHelpers {
       } yield Settings(settings.map(t => Setting(t._1.toShort, t._2)))
       
       case Types.PUSH_PROMISE => for {
-        padLen          <- c.get[Option[Int]]("padding_length")
-        promisedStream  <- c.get[Int]("promised_stream_id")
-        frag            <- c.get[ByteString]("header_block_fragment")
-        padding         <- c.get[Option[ByteString]]("padding")
+        padLen         <- c.get[Option[Int]]("padding_length")
+        promisedStream <- c.get[Int]("promised_stream_id")
+        frag           <- c.get[ByteString]("header_block_fragment")
+        padding        <- c.get[Option[ByteString]]("padding")
       } yield PushPromise(stream, promisedStream, frag, padding = padding)
       
       case Types.PING => for {
@@ -92,7 +92,7 @@ class FrameCoderTest extends Specification with TestHelpers {
   implicit def caseJson: DecodeJson[Case] = DecodeJson(c => for {
     wire        <- (c --\ "wire").as[String].map(_.byteStringFromHex)
     description <- (c --\ "description").as[String]
-    result <- (c --\ "error").as[List[Int]].map { errorList =>
+    result      <- (c --\ "error").as[List[Int]].map { errorList =>
       ErrorCase(wire, description, errorList): Case
     } ||| {
       for {
@@ -124,32 +124,30 @@ class FrameCoderTest extends Specification with TestHelpers {
     val coder = new FrameCoder
     
     cases map { cases =>
-      "encode" in Fragments.foreach(cases) {
-        case c: OkCase => describe(c.description) >> {
-          coder.encode(c.payload) must_== \/-(c.wire)
-        }
-        case _ =>
-          Fragments.empty
-      }
-    } valueOr { error =>
-      Fragments { "encode" in skipped("Error: " + error) }
-    }
-        
-    cases map { cases =>
-      "decode" in Fragments.foreach(cases) {
-        case c: OkCase => describe(c.description) >> {
+      val okCases = cases.collect { case c: OkCase => c }
+      val errCases = cases.collect { case c: ErrorCase => c }
+
+      "encode" in Fragments.foreach(okCases) { c => c.description >> {
+        coder.encode(c.payload) must_== \/-(c.wire)
+      }}
+
+      "decode" in {
+        "with success" in Fragments.foreach(okCases) { c => c.description >> {
           coder.decodeS.run(c.wire) must beLike { case \/-((rem, frame)) =>
             (rem must beEmpty) and  (frame must_== c.payload) and (frame.flags must_== c.flags)
           }
-        }
-        case c: ErrorCase => describe(c.description) >> {
+        }}
+        "with failure" in Fragments.foreach(errCases) { c => c.description >> {
           coder.decodeS.eval(c.wire) must beLike { case -\/(error) =>
             c.errors must contain(error.code)
           }
-        }
+        }}
       }
     } valueOr { error =>
-      Fragments { "decode" in skipped("Error: " + error) }
+      Fragments(
+        "encode" in skipped("Error: " + error),
+        "decode" in skipped("Error: " + error)
+      )
     }
   }
 }
