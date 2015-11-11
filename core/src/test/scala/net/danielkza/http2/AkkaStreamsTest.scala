@@ -15,7 +15,7 @@ object AkkaStreamsTest {
   val config = """
     akka {
       test {
-        single-expect-default = 1 day
+        single-expect-default = 10 seconds
       }
     }
     """
