@@ -27,8 +27,8 @@ class HeaderCollapseStage extends StatefulStage[Frame, Frame] {
 
     def collapse: Frame = {
       initialFrame
-        .left.map(_.copy(headerFragment = headerBlock))
-        .right.map(_.copy(headerFragment = headerBlock))
+        .left.map(_.copy(headerFragment = headerBlock, endHeaders = true))
+        .right.map(_.copy(headerFragment = headerBlock, endHeaders = true))
         .merge
     }
 

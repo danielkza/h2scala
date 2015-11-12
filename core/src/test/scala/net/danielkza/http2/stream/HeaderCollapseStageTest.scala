@@ -6,10 +6,10 @@ import akka.stream.testkit.scaladsl._
 import org.specs2.matcher.MatchResult
 import net.danielkza.http2.protocol.Frame
 
-class HeaderSplitStageTest extends HeaderStageTest {
+class HeaderCollapseStageTest extends HeaderStageTest {
   val testMaxSize = 16384
 
-  val flow = Flow[Frame].transform(() => new HeaderSplitStage(testMaxSize))
+  val flow = Flow[Frame].transform(() => new HeaderCollapseStage)
   val graph = TestSource.probe[Frame]
     .via(flow)
     .toMat(TestSink.probe[Frame])(Keep.both)
@@ -17,15 +17,15 @@ class HeaderSplitStageTest extends HeaderStageTest {
   lazy val (pub, sub) = graph.run()
 
   override def runCase(testCase: (Frame, Seq[Frame])): MatchResult[Any] = {
-    val (original, split) = testCase
-    sub.request(split.length)
-    pub.sendNext(original)
+    val (combined, split) = testCase
 
-    sub.expectNextN(split.length) must containTheSameElementsAs(split)
+    sub.request(1)
+    split.foreach(pub.sendNext)
+    sub.expectNextOrError() must_=== Right(combined)
   }
 
-  "HeaderSplitStage" should {
-    "split" in testHeaders
+  "HeaderCollapseStage" should {
+    "collapse" in testHeaders
   }
 }
 
