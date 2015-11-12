@@ -51,6 +51,10 @@ object Frame {
     object SETTINGS {
       final val ACK: Byte = 0x1
     }
+
+    object CONTINUATION {
+      final val END_HEADERS: Byte = 0x4
+    }
   }
 
   case class NonStandard(
@@ -89,7 +93,7 @@ object Frame {
     streamDependency: Option[StreamDependency],
     headerFragment: ByteString,
     endStream: Boolean = false,
-    endHeaders: Boolean = false,
+    endHeaders: Boolean = true,
     padding: Option[ByteString] = None
   ) extends Standard(Types.HEADERS) {
     override def flags: Byte = {
@@ -123,7 +127,7 @@ object Frame {
     override val stream: Int,
     promisedStream: Int,
     headerFragment: ByteString,
-    endHeaders: Boolean = false,
+    endHeaders: Boolean = true,
     padding: Option[ByteString] = None
   ) extends Standard(Types.PUSH_PROMISE) {
     override def flags: Byte = {
@@ -187,9 +191,11 @@ object Frame {
   case class Continuation(
     override val stream: Int,
     headerFragment: ByteString,
-    endHeaders: Boolean = false
+    endHeaders: Boolean = true
   ) extends Standard(Types.CONTINUATION) {
-    override def withFlags(flags: Byte): Continuation = this
+    override def withFlags(flags: Byte): Continuation = {
+      copy(endHeaders = (flags & Flags.CONTINUATION.END_HEADERS) != 0)
+    }
   }
 
 }
