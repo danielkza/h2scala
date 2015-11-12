@@ -26,6 +26,7 @@ class HeaderSplitStageTest extends HeaderStageTest {
 
   "HeaderSplitStage" should {
     "split" in testHeaders
+    "passthrough" in testPassthrough
   }
 }
 

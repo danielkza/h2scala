@@ -15,6 +15,8 @@ class HeaderCollapseStage extends StatefulStage[Frame, Frame] {
         case p: PushPromise if !p.endHeaders =>
           become(Continue(Right(p)))
           ctx.pull()
+        case c: Continuation =>
+          ctx.fail(ContinuationError().toException)
         case _ =>
           ctx.push(frame)
       }
@@ -34,9 +36,7 @@ class HeaderCollapseStage extends StatefulStage[Frame, Frame] {
 
     override def onPush(frame: Frame, ctx: Context[Frame]): SyncDirective = {
       frame match {
-        case c: Continuation if c.stream != stream =>
-          ctx.fail(new InvalidStream().toException)
-        case Continuation(_, fragment, endHeaders) =>
+        case Continuation(`stream`, fragment, endHeaders) =>
           headerBlock ++= fragment
           if(endHeaders) {
             become(Passthrough)
@@ -45,7 +45,7 @@ class HeaderCollapseStage extends StatefulStage[Frame, Frame] {
             ctx.pull()
           }
         case _ =>
-          ctx.fail(ContinuationError())
+          ctx.fail(ContinuationError().toException)
       }
     }
   }
