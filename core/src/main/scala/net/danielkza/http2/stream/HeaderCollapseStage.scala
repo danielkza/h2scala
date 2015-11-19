@@ -3,7 +3,7 @@ package net.danielkza.http2.stream
 import akka.stream.stage._
 import net.danielkza.http2.protocol.Frame
 import net.danielkza.http2.protocol.Frame.{Headers, PushPromise, Continuation}
-import net.danielkza.http2.protocol.HTTP2Error.{InvalidStream, ContinuationError}
+import net.danielkza.http2.protocol.HTTP2Error.ContinuationError
 
 class HeaderCollapseStage extends StatefulStage[Frame, Frame] {
   object Passthrough extends State {

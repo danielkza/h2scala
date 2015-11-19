@@ -1,18 +1,18 @@
 package net.danielkza.http2.hpack
 
+
 import scalaz._
 import scalaz.std.AllInstances._
 import scalaz.syntax.traverse._
-  
 import org.specs2.matcher.DataTables
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
-
 import akka.util.ByteString
 import net.danielkza.http2.TestHelpers
+import net.danielkza.http2.api.Header
 import net.danielkza.http2.hpack.coders.{HeaderBlockCoder, HeaderCoder}
 
-class HeaderBlockCoderTest extends Specification with DataTables with TestHelpers {  
+class HeaderBlockCoderTest extends Specification with DataTables with TestHelpers {
   import HeaderRepr._
   import Header.{plain, secure}
   

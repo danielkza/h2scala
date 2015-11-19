@@ -1,5 +1,7 @@
 package net.danielkza.http2.stream
 
+import net.danielkza.http2.api.Header
+
 import scala.collection.immutable
 import akka.stream.scaladsl._
 import akka.stream.testkit.scaladsl._
@@ -7,7 +9,6 @@ import akka.util.ByteString
 import net.danielkza.http2.{AkkaStreamsTest, TestHelpers}
 import net.danielkza.http2.protocol.{Frame, HTTP2Error}
 import net.danielkza.http2.protocol.coders.FrameCoder
-import net.danielkza.http2.hpack.Header
 import net.danielkza.http2.hpack.coders.HeaderBlockCoder
 
 class FrameDecoderStageTest extends AkkaStreamsTest with TestHelpers {

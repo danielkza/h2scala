@@ -29,7 +29,7 @@ abstract class HeaderStageTest extends AkkaStreamsTest with SpecificationLike wi
     "PING"         >> run(Ping(ByteString.empty))
     "SETTINGS"     >> run(Settings(List()))
     "GOAWAY"       >> run(GoAway(1))
-    "Non-standard" >> run(NonStandard(1, 0xFF.toByte, 0xFF.toByte,   ByteString.empty))
+    "Non-standard" >> run(NonStandard(1, 0xFF.toByte, 0xFF.toByte, ByteString.empty))
   }
 
   def testHeaders = {

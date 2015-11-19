@@ -1,16 +1,20 @@
 package net.danielkza.http2.hpack.coders
 
-import akka.util.{ByteString, ByteStringBuilder}
-import net.danielkza.http2.Coder
-import net.danielkza.http2.hpack._
-
 import scalaz._
 import scalaz.syntax.either._
 import scalaz.syntax.std.option._
+import akka.util.{ByteString, ByteStringBuilder}
+import net.danielkza.http2.Coder
+import net.danielkza.http2.api.Header
+import net.danielkza.http2.hpack._
 
 class HeaderBlockCoder(maxCapacity: Int = 4096,
                        private val headerCoder: HeaderCoder = new HeaderCoder())
-extends Coder[Seq[Header]] {
+  extends Coder[Seq[Header]]
+{
+  import Header._
+  import HeaderRepr._
+
   override type Error = HeaderError
   
   private val staticTable = StaticTable.default
@@ -41,12 +45,13 @@ extends Coder[Seq[Header]] {
   }
   
   private def processHeader(header: Header): (HeaderRepr, DynamicTable) = {
-    import Header._
-    import HeaderRepr._
     import Table.{FoundName, FoundNameValue, NotFound}
-    
-    header match {
-      case Plain(name, value) => entryToIndex(name, Some(value)) match {
+
+    val name = header.name
+    val value = header.value
+
+    if(!header.secure) {
+      entryToIndex(name, Some(value)) match {
         case FoundNameValue(index) =>
           Indexed(index) -> dynamicTable
         case FoundName(index) =>
@@ -54,37 +59,35 @@ extends Coder[Seq[Header]] {
         case NotFound =>
           IncrementalLiteral(name, value) -> (dynamicTable + (name -> value))
       }
-      case Secure(name, value) => entryToIndex(name, None) match {
+    } else {
+      entryToIndex(name, None) match {
         case FoundName(index) => NeverIndexedWithIndexedName(index, value) -> dynamicTable
         case NotFound         => NeverIndexed(name, value) -> dynamicTable
         case _                => throw new AssertionError("Secure header value should never be matched")
       }
-    }    
+    }
   }
   
   private def processHeaderRepr(headerRepr: HeaderRepr)
     : \/[HeaderError, (Option[Header], DynamicTable)] =
   {
-    import Header._
-    import HeaderRepr._
-    
     headerRepr match {
       case DynamicTableSizeUpdate(size) =>
         dynamicTable.withCapacity(size).map(None -> _)
       case Indexed(index) =>
-        indexToEntry(index).map { e => Plain(e.name, e.value).some -> dynamicTable }
+        indexToEntry(index).map { e => plain(e.name, e.value).some -> dynamicTable }
       case h @ IncrementalLiteralWithIndexedName(index, value) =>
-        indexToEntry(index).map { e => Plain(e.name, value).some -> (dynamicTable + (e.name -> value)) }
+        indexToEntry(index).map { e => plain(e.name, value).some -> (dynamicTable + (e.name -> value)) }
       case h @ LiteralWithIndexedName(index, value) =>
-        indexToEntry(index).map { e => Plain(e.name, value).some -> dynamicTable}
+        indexToEntry(index).map { e => plain(e.name, value).some -> dynamicTable}
       case h @ NeverIndexedWithIndexedName(index, value) =>
-        indexToEntry(index).map { e => Secure(e.name, value).some -> dynamicTable}
+        indexToEntry(index).map { e => secure(e.name, value).some -> dynamicTable}
       case h @ IncrementalLiteral(name, value) =>
-        (Plain(name, value).some -> (dynamicTable + (name -> value))).right
+        (plain(name, value).some -> (dynamicTable + (name -> value))).right
       case h @ Literal(name, value) =>
-        (Plain(name, value).some -> dynamicTable).right
+        (plain(name, value).some -> dynamicTable).right
       case h @ NeverIndexed(name, value) =>
-        (Secure(name, value).some -> dynamicTable).right
+        (secure(name, value).some -> dynamicTable).right
     }
   }
   

@@ -16,6 +16,7 @@ object BuildSettings {
       "com.chuusai"                %% "shapeless"                        % "2.2.5",
       "com.typesafe.akka"          %% "akka-actor"                       % "2.4.0",
       "com.typesafe.akka"          %% "akka-stream-experimental"         % "2.0-M1",
+      "com.typesafe.akka"          %% "akka-http-core-experimental"      % "2.0-M1",
       "com.github.pathikrit"       %% "better-files"                     % "2.13.0",
       "org.specs2"                 %% "specs2-core"                      % "3.6.4"  % "test",
       "io.argonaut"                %% "argonaut"                         % "6.1-M4" % "test",
