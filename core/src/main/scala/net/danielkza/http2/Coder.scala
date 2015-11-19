@@ -105,8 +105,7 @@ object Coder {
   }
   
   object enc extends Poly2 {
-    final type Context = ByteStringBuilder
-    final type R[E] = (Context, \/[E, Unit])
+    final type R[E] = (ByteStringBuilder, \/[E, Unit])
     
     implicit def default[Value, Err, CurCoder <: Coder.Aux[Value, Err]] =
       at[R[Err], (Value, CurCoder)]
@@ -145,11 +144,11 @@ object Coder {
         coders.foldLeft(init)(dec)(decodeF)
       }
       
-      override def decode(bs: ByteString): \/[Error, (Prod, Int)] = {
+      override final def decode(bs: ByteString): \/[Error, (Prod, Int)] = {
         decoder.run(bs).map { case (rem, result) => (gen.from(result), bs.length - rem.length) }
       }
       
-      override def decodeS: DecodeStateT[Prod] =
+      override final def decodeS: DecodeStateT[Prod] =
         decoder.map(gen.from)
     }
   }
