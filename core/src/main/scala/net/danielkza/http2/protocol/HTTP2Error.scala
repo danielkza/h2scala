@@ -89,6 +89,7 @@ object HTTP2Error {
     def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
     def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
   }
+
   case class InvalidPadding(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
     extends Standard(PROTOCOL_ERROR)
   {
@@ -96,6 +97,7 @@ object HTTP2Error {
     def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
     def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
   }
+
   case class ContinuationError(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
     extends Standard(PROTOCOL_ERROR)
   {
@@ -103,6 +105,7 @@ object HTTP2Error {
     def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
     def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
   }
+
   case class CompressionError(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
     extends Standard(COMPRESSION_ERROR)
   {
@@ -110,10 +113,27 @@ object HTTP2Error {
     def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
     def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
   }
+
   case class HeaderError(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
     extends Standard(PROTOCOL_ERROR)
   {
     final type Self = HeaderError
+    def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
+    def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
+  }
+
+  case class StreamClosedError(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
+    extends Standard(STREAM_CLOSED)
+  {
+    final type Self = StreamClosedError
+    def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
+    def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
+  }
+
+  case class UnacceptableFrameError(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
+    extends Standard(PROTOCOL_ERROR)
+  {
+    final type Self = UnacceptableFrameError
     def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
     def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
   }
