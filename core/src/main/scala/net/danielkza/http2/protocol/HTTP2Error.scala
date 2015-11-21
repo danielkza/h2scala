@@ -16,7 +16,9 @@ trait HTTP2Error {
       case (None, None)             => "Unknown error"
     }
 
-    new HTTP2Exception(this)(formattedMessage, cause)
+    try {
+      throw new HTTP2Exception(this)(formattedMessage, cause)
+    } catch { case e: HTTP2Exception => e }
   }
 
   final def toException: HTTP2Exception = toException()
@@ -48,6 +50,7 @@ object HTTP2Error {
     type Self <: HTTP2Error
     def withDebugData(debugData: Option[ByteString]): Self
     def withErrorInfo(errorInfo: Option[ErrorInfo]): Self
+    def withErrorMessage(message: String): Self = withErrorInfo(Some(ErrorInfo(message)))
   }
 
   object Standard {
@@ -82,6 +85,7 @@ object HTTP2Error {
     def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
     def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
   }
+
   case class InvalidWindowUpdate(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
     extends Standard(PROTOCOL_ERROR)
   {
@@ -118,6 +122,14 @@ object HTTP2Error {
     extends Standard(PROTOCOL_ERROR)
   {
     final type Self = HeaderError
+    def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
+    def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
+  }
+
+  case class SettingsError(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
+    extends Standard(PROTOCOL_ERROR)
+  {
+    final type Self = SettingsError
     def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
     def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
   }
