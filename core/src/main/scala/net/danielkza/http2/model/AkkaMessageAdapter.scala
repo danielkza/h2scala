@@ -5,16 +5,15 @@ import scalaz._
 import scalaz.syntax.either._
 import scalaz.syntax.std.option._
 import akka.util.ByteString
-import akka.http.ClientConnectionSettings
+import akka.http.ParserSettings
 import akka.http.scaladsl.{model => akkaModel}
 import net.danielkza.http2.api.Header
 import net.danielkza.http2.protocol.HTTP2Error
 
-class AkkaHeaderAdapter(settings: ClientConnectionSettings) {
+class AkkaMessageAdapter(parserSettings: ParserSettings) {
   import Header._
   import Header.PseudoHeaders._
   import akkaModel._
-  import settings._
 
   private def headerErr(info: ErrorInfo): HTTP2Error.HeaderError =
     HTTP2Error.HeaderError(errorInfo = Some(info))
