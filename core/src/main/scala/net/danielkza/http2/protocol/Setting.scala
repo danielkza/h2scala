@@ -28,4 +28,17 @@ object Setting {
       case None => Some(setting.identifier -> setting.value)
     }
   }
+
+  case class Extractor(identifier: Short) {
+    def unapply(settings: List[Setting]): Option[Int] = {
+      settings.find(_.identifier == identifier).map(_.value)
+    }
+  }
+
+  final val ExtractHeaderTableSize      = Extractor(SETTINGS_HEADER_TABLE_SIZE)
+  final val ExtractEnablePush           = Extractor(SETTINGS_ENABLE_PUSH)
+  final val ExtractMaxConcurrentStreams = Extractor(SETTINGS_MAX_CONCURRENT_STREAMS)
+  final val ExtractInitialWindowSize    = Extractor(SETTINGS_INITIAL_WINDOW_SIZE)
+  final val ExtractMaxFrameSize         = Extractor(SETTINGS_MAX_FRAME_SIZE)
+  final val ExtractMaxHeaderListSize    = Extractor(SETTINGS_MAX_HEADER_LIST_SIZE)
 }
