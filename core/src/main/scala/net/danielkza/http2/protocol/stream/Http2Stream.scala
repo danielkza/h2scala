@@ -5,15 +5,15 @@ import net.danielkza.http2.protocol.{Frame, HTTP2Error}
 import scalaz.\/
 import scalaz.syntax.either._
 
-class Stream(
+class Http2Stream(
   val id: Int,
-  protected var state: Stream.State,
+  protected var state: Http2Stream.State,
   protected var parentStream: Int = 0,
   protected var weight: Int = 16,
   protected var flowWindow: Int = 0)
 {
   import HTTP2Error._
-  import Stream._
+  import Http2Stream._
 
   private def applyState(newState: Option[State]) = {
     (state, newState) match {
@@ -35,7 +35,7 @@ class Stream(
   }
 }
 
-object Stream {
+object Http2Stream {
   import Frame._
 
   sealed trait State {
