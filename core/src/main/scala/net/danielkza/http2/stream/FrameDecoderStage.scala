@@ -3,14 +3,18 @@ package net.danielkza.http2.stream
 import akka.stream.stage._
 import akka.util.ByteString
 
-import net.danielkza.http2.protocol.Frame
+import net.danielkza.http2.protocol.{HTTP2Error, Frame}
 import net.danielkza.http2.protocol.coders.FrameCoder
+import net.danielkza.http2.stream.FrameDecoderStage.NotHTTP2Exception
 
-class FrameDecoderStage extends PushPullStage[ByteString, Frame] {
+class FrameDecoderStage(val waitForPreface: Boolean) extends PushPullStage[ByteString, Frame] {
+  import FrameDecoderStage.CONNECTION_PREFACE
+
   private val coder = new FrameCoder
   private var nextFrameCoder: Option[coder.DecodeState] = None
   private var stash = ByteString.empty
-  private var needed = -1
+  private var needed = if(!waitForPreface) -1 else CONNECTION_PREFACE.length
+  private var prefaceNeeded = !waitForPreface
 
   override def onPush(bytes: ByteString, ctx: Context[Frame]) = {
     stash ++= bytes
@@ -39,6 +43,16 @@ class FrameDecoderStage extends PushPullStage[ByteString, Frame] {
       }
     } else if (stash.length < needed) {
       pullOrFinish(ctx)
+    } else if(prefaceNeeded) {
+      val (preface, rest) = stash.splitAt(needed)
+      if(preface != CONNECTION_PREFACE)
+        ctx.fail(NotHTTP2Exception())
+      else {
+        prefaceNeeded = false
+        needed = -1
+        stash = rest
+        pullOrFinish(ctx)
+      }
     } else {
       nextFrameCoder.get.run(stash).leftMap { error =>
         ctx.fail(error.toException())
@@ -55,4 +69,11 @@ class FrameDecoderStage extends PushPullStage[ByteString, Frame] {
     if (ctx.isFinishing) ctx.finish()
     else ctx.pull()
   }
+}
+
+object FrameDecoderStage {
+  case class NotHTTP2Exception(message: String = null, cause: Throwable = null)
+    extends RuntimeException(message, cause)
+
+  final val CONNECTION_PREFACE = ByteString.fromString("PRI *\n   HTTP/2.0\\r\\n\\r\\nSM\\r\\n\\r\\n", "US-ASCII")
 }
