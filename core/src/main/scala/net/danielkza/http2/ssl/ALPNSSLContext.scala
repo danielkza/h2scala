@@ -2,12 +2,11 @@ package net.danielkza.http2.ssl
 
 import java.util
 import javax.net.ssl.{SSLContext, SSLEngine, SSLException}
-
+import scala.collection.JavaConversions._
+import scala.collection.immutable
 import org.eclipse.jetty.alpn.ALPN
 
-import scala.collection.JavaConversions._
-
-class WrappedALPNSSLContext(context: SSLContext, orderedProtocols: Seq[String])
+class ALPNSSLContext(context: SSLContext, orderedProtocols: immutable.Seq[String])
   extends WrappedSSLContext(context)
 {
   private class Provider(engine: SSLEngine) extends ALPN.ClientProvider with ALPN.ServerProvider {
@@ -26,11 +25,12 @@ class WrappedALPNSSLContext(context: SSLContext, orderedProtocols: Seq[String])
     }
 
     override def unsupported(): Unit =
-      ALPN.remove(engine)
+      throw new SSLException(s"ALPN: Unsupported by peer")
   }
 
   override def mapEngine(engine: SSLEngine): SSLEngine = {
     ALPN.put(engine, new Provider(engine))
+    ALPN.debug = true
     engine
   }
 }
