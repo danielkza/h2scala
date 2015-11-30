@@ -1,9 +1,12 @@
 package net.danielkza.http2.stream
 
-import akka.stream.stage.{LifecycleContext, PushStage}
+import akka.actor.Actor
+import akka.util.ByteString
+import net.danielkza.http2.api.Header
 import net.danielkza.http2.hpack.coders.HeaderBlockCoder
+import net.danielkza.http2.protocol.HTTP2Error
 
-abstract class HeaderStageBase[In, Out](val initialMaxTableSize: Int) extends PushStage[In, Out] {
+abstract class HeaderTransformActorBase(val initialMaxTableSize: Int) extends Actor {
   private var _headerBlockCoder: HeaderBlockCoder = null
 
   override def postStop(): Unit = {
@@ -11,8 +14,8 @@ abstract class HeaderStageBase[In, Out](val initialMaxTableSize: Int) extends Pu
     super.postStop()
   }
 
-  override def preStart(ctx: LifecycleContext): Unit = {
-    super.preStart(ctx)
+  override def preStart(): Unit = {
+    super.preStart()
     _headerBlockCoder = new HeaderBlockCoder(initialMaxTableSize)
   }
 
@@ -30,4 +33,13 @@ abstract class HeaderStageBase[In, Out](val initialMaxTableSize: Int) extends Pu
 
     _headerBlockCoder = newCoder
   }
+}
+
+object HeaderTransformActorBase {
+  sealed trait Message
+  case class Fragment(block: ByteString) extends Message
+  case class Headers(headers: Seq[Header]) extends Message
+  case class SetTableMaxSize(size: Int) extends Message
+  case class Failure(error: HTTP2Error) extends Message
+  case object OK extends Message
 }
