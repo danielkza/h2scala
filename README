@@ -1,0 +1,16 @@
+HTTP/2 Server implementation is Scala and Akka Streams
+
+This implements the basics of an HTTP/2 server using Akka Streams for all the data flow.
+
+All the build is handled by SBT, and using it should be enough to compile and start testing.
+
+Any actual programs that run the server must start with the Jetty ALPN JAR in it's bootclasspath.
+Since there are not supported plain-text protocols this wiill cause issue immediately if not taken care of.
+
+Also, it's necessary to have a keystore set-up, even if with a temporary replacement. Tutorials on how to achieve that
+are a available in many places.
+
+One simple example application server is included that just serves files in the local directory, which can be run with
+`sbt examples/run`
+
+The default application instance can also be debugged using the :debug configuration.
