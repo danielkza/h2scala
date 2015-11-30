@@ -1,5 +1,6 @@
 package net.danielkza.http2.protocol
 
+import scala.language.implicitConversions
 import akka.util.ByteString
 import akka.http.scaladsl.model.ErrorInfo
 
@@ -17,7 +18,7 @@ trait HTTP2Error {
     }
 
     try {
-      throw new HTTP2Exception(this)(formattedMessage, cause)
+      throw new HTTP2Exception(this)(getClass.getSimpleName + ": " + formattedMessage, cause)
     } catch { case e: HTTP2Exception => e }
   }
 
@@ -46,11 +47,21 @@ object HTTP2Error {
   }
   import Codes._
 
+  implicit def toException(error: HTTP2Error): HTTP2Exception = error.toException
+
   sealed abstract class Standard(override val code: Int) extends HTTP2Error {
     type Self <: HTTP2Error
     def withDebugData(debugData: Option[ByteString]): Self
     def withErrorInfo(errorInfo: Option[ErrorInfo]): Self
     def withErrorMessage(message: String): Self = withErrorInfo(Some(ErrorInfo(message)))
+  }
+
+  private case class GenericStandard(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
+                                    (errorCode: Int) extends Standard(errorCode) {
+    override type Self = GenericStandard
+
+    override def withDebugData(debugData: Option[ByteString]): Self = copy(debugData = debugData)(errorCode)
+    override def withErrorInfo(errorInfo: Option[ErrorInfo]): Self = copy(errorInfo = errorInfo)(errorCode)
   }
 
   object Standard {
@@ -60,7 +71,25 @@ object HTTP2Error {
         case _ => None
       }
     }
+
+    def fromCode(errorCode: Int): HTTP2Error = {
+      errorCode match {
+        case NO_ERROR           => NoError()
+        case PROTOCOL_ERROR     => ProtocolError()
+        case INTERNAL_ERROR     => InternalError()
+        case FLOW_CONTROL_ERROR => FlowControlError()
+        case STREAM_CLOSED      => StreamClosedError()
+        case FRAME_SIZE_ERROR   => InvalidFrameSize()
+        case REFUSED_STREAM     => RefusedStream()
+        case COMPRESSION_ERROR  => CompressionError()
+        case SETTINGS_TIMEOUT   => SettingsTimeout()
+        case e                  => GenericStandard()(e)
+      }
+    }
   }
+
+  implicit def stringToErrorInfo(message: String): Option[ErrorInfo]
+    = Some(ErrorInfo(message))
 
   case class NoError(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
     extends Standard(NO_ERROR)
@@ -69,6 +98,14 @@ object HTTP2Error {
     def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
     def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
   }
+
+  case class ProtocolError(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
+      extends Standard(PROTOCOL_ERROR)
+    {
+      final type Self = ProtocolError
+      def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
+      def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
+    }
 
   case class InvalidStream(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
     extends Standard(PROTOCOL_ERROR)
@@ -134,6 +171,14 @@ object HTTP2Error {
     def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
   }
 
+  case class SettingsTimeout(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
+    extends Standard(SETTINGS_TIMEOUT)
+  {
+    final type Self = SettingsTimeout
+    def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
+    def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
+  }
+
   case class StreamClosedError(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
     extends Standard(STREAM_CLOSED)
   {
@@ -146,6 +191,38 @@ object HTTP2Error {
     extends Standard(PROTOCOL_ERROR)
   {
     final type Self = UnacceptableFrameError
+    def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
+    def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
+  }
+
+  case class ExhaustedStreams(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
+    extends Standard(NO_ERROR)
+  {
+    final type Self = ExhaustedStreams
+    def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
+    def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
+  }
+
+  case class RefusedStream(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
+    extends Standard(REFUSED_STREAM)
+  {
+    final type Self = RefusedStream
+    def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
+    def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
+  }
+
+  case class InternalError(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
+    extends Standard(INTERNAL_ERROR)
+  {
+    final type Self = InternalError
+    def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
+    def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
+  }
+
+  case class FlowControlError(errorInfo: Option[ErrorInfo] = None, debugData: Option[ByteString] = None)
+    extends Standard(FLOW_CONTROL_ERROR)
+  {
+    final type Self = FlowControlError
     def withDebugData(debugData: Option[ByteString]) = copy(debugData = debugData)
     def withErrorInfo(errorInfo: Option[ErrorInfo]) = copy(errorInfo = errorInfo)
   }

@@ -9,6 +9,10 @@ sealed trait Frame {
   def withFlags(flags: Byte): Frame
 }
 
+sealed trait HeaderFrame extends Frame {
+  def headerFragment: ByteString
+}
+
 object Frame {
   final val HEADER_LENGTH = 9
   final val DEFAULT_MAX_FRAME_SIZE = 16384
@@ -95,7 +99,7 @@ object Frame {
     endStream: Boolean = false,
     endHeaders: Boolean = true,
     padding: Option[ByteString] = None
-  ) extends Standard(Types.HEADERS) {
+  ) extends Standard(Types.HEADERS) with HeaderFrame {
     override def flags: Byte = {
       var flags = if(streamDependency.isDefined) Flags.HEADERS.PRIORITY else 0
       padding.foreach { _ => flags |= Flags.HEADERS.PADDED }
@@ -129,7 +133,7 @@ object Frame {
     headerFragment: ByteString,
     endHeaders: Boolean = true,
     padding: Option[ByteString] = None
-  ) extends Standard(Types.PUSH_PROMISE) {
+  ) extends Standard(Types.PUSH_PROMISE) with HeaderFrame {
     override def flags: Byte = {
       var flags = if(endHeaders) Flags.PUSH_PROMISE.END_HEADERS else 0
       padding.foreach { _ => flags |= Flags.PUSH_PROMISE.PADDED }
@@ -164,6 +168,13 @@ object Frame {
 
     override def withFlags(flags: Byte): Settings =
       copy(ack = (flags & Flags.SETTINGS.ACK) != 0)
+  }
+
+  object Settings {
+    def apply(settings: Traversable[(Short, Int)]): Settings =
+      Settings(settings.map { case (id, value) => Setting(id, value) }.toList)
+
+    val ack: Settings = Settings(List(), ack = true)
   }
 
   case class GoAway(

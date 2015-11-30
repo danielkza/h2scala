@@ -1,5 +1,7 @@
 package net.danielkza.http2.model
 
+import net.danielkza.http2.model.headers.Trailer
+
 import scala.collection.immutable
 import scalaz._
 import scalaz.syntax.either._
@@ -12,19 +14,20 @@ import net.danielkza.http2.protocol.HTTP2Error
 
 class AkkaMessageAdapter(parserSettings: ParserSettings) {
   import Header._
-  import Header.PseudoHeaders._
-  import akkaModel._
+  import Header.Constants._
+  import akkaModel.{headers => h, _}
+  import HTTP2Error._
 
-  private def headerErr(info: ErrorInfo): HTTP2Error.HeaderError =
-    HTTP2Error.HeaderError(errorInfo = Some(info))
+  private def headerErr(info: ErrorInfo): HeaderError =
+    HeaderError(errorInfo = Some(info))
 
-  private def headerErr(summary: String): HTTP2Error.HeaderError =
+  private def headerErr(summary: String): HeaderError =
     headerErr(ErrorInfo(summary))
 
-  def headersFromAkkaUri(akkaUri: Uri): \/[HTTP2Error, Seq[Header]] = {
+  def headersFromAkkaUri(akkaUri: Uri): \/[HTTP2Error, immutable.Seq[Header]] = {
     val scheme = akkaUri.scheme
     val authority = if(!akkaUri.authority.isEmpty) {
-      if(akkaUri.authority.userinfo.nonEmpty)
+      if(!akkaUri.authority.userinfo.isEmpty)
         return headerErr("Userinfo not allowed in :authority").left
       else
         ByteString(akkaUri.authority.toString)
@@ -33,13 +36,16 @@ class AkkaMessageAdapter(parserSettings: ParserSettings) {
     }
 
     val target = ByteString(akkaUri.toHttpRequestTargetOriginForm.toString)
-    var headers = Seq(RawHeader(SCHEME, ByteString(scheme)), RawHeader(PATH, target))
+    var headers = immutable.Seq(RawHeader(SCHEME, ByteString(scheme)), RawHeader(PATH, target))
     if(authority.nonEmpty) headers = headers :+ RawHeader(AUTHORITY, authority)
 
     headers.right
   }
 
-  def headersFromAkkaMessage(message: HttpMessage): \/[HTTP2Error, Seq[Header]] = {
+  def headersFromAkka(akkaHeaders: Seq[HttpHeader]): immutable.Seq[Header] =
+    akkaHeaders.map(WrappedAkkaHeader(_)).toList
+
+  def headersFromAkkaMessage(message: HttpMessage): \/[HTTP2Error, immutable.Seq[Header]] = {
     message match {
       case req: HttpRequest =>
         for {
@@ -48,7 +54,29 @@ class AkkaMessageAdapter(parserSettings: ParserSettings) {
           otherHeaders = req.headers.map(WrappedAkkaHeader(_))
         } yield (uriHeaders :+ method) ++ otherHeaders
       case resp: HttpResponse =>
-        (WrappedAkkaStatusCode(resp.status) +: resp.headers.map(WrappedAkkaHeader(_))).right
+        var headers = immutable.Seq.newBuilder[Header]
+
+        headers += WrappedAkkaStatusCode(resp.status)
+        headers += Header.plain("Content-Type", resp.entity.contentType.value)
+
+        resp.entity match {
+          case _: HttpEntity.CloseDelimited =>
+            return InternalError("CloseDelimited response is not supported in HTTP/2").left
+          case _: HttpEntity.Chunked =>
+          case _ if resp.headers.exists(_.isInstanceOf[Trailer]) =>
+            return InternalError("Trailer header only supported with Chunked response entity").left
+          case _ =>
+        }
+
+        resp.entity.contentLengthOption.foreach { len =>
+          headers += Header.plain("Content-Length", len.toString)
+        }
+
+        if(!resp.headers.exists(_.isInstanceOf[h.Date]))
+           headers += h.Date(DateTime.now)
+
+        headers ++= resp.headers.map(h => h: WrappedAkkaHeader)
+        headers.result().right
     }
   }
 
@@ -69,6 +97,30 @@ class AkkaMessageAdapter(parserSettings: ParserSettings) {
     } catch { case e: IllegalUriException =>
       headerErr(e.info.withSummaryPrepended(s"Invalid $name")).left
     }
+  }
+
+  private def parseSingleHeader(header: Header): \/[HTTP2Error, HttpHeader] = {
+    HttpHeader.parse(decodeBytes(header.name), decodeBytes(header.value)) match {
+      case HttpHeader.ParsingResult.Error(error) =>
+        headerErr(error).left
+      case HttpHeader.ParsingResult.Ok(akkaHeader, _) =>
+        akkaHeader.right
+    }
+  }
+
+  def headersToAkka(headers: Seq[Header]): \/[HTTP2Error, immutable.Seq[HttpHeader]] = {
+    // It could be nice to use Scalaz's traverse here, but we want to take any kind of Seq and return an immutable.Seq,
+    // but it can only return the same collection that it takes
+    val akkaHeaders = immutable.Seq.newBuilder[HttpHeader]
+
+    headers.foreach { header =>
+      parseSingleHeader(header) match {
+        case \/-(akkaHeader) => akkaHeaders += akkaHeader
+        case e @ -\/(_)      => return e
+      }
+    }
+
+    akkaHeaders.result().right
   }
 
   def headersToAkkaRequest(headers: Seq[Header]): \/[HTTP2Error, HttpRequest] = {
@@ -107,11 +159,9 @@ class AkkaMessageAdapter(parserSettings: ParserSettings) {
         case HOST =>
           host = decodeBytes(header.value).some
         case _ =>
-          HttpHeader.parse(decodeBytes(header.name), decodeBytes(header.value)) match {
-            case HttpHeader.ParsingResult.Error(error) =>
-              return headerErr(error).left
-            case HttpHeader.ParsingResult.Ok(akkaHeader, _) =>
-              akkaHeaders += akkaHeader
+          parseSingleHeader(header) match {
+            case \/-(akkaHeader) => akkaHeaders += akkaHeader
+            case err @ -\/(_) => return err
           }
       }
     }

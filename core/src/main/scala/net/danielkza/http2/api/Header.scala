@@ -1,5 +1,7 @@
 package net.danielkza.http2.api
 
+import akka.http.scaladsl.model.HttpHeader
+
 import scala.language.implicitConversions
 import akka.util.ByteString
 import akka.http.scaladsl.{model => akkaModel}
@@ -11,16 +13,16 @@ sealed trait Header {
 }
 
 object Header extends {
-  object PseudoHeaders {
-    final val METHOD    = ByteString(":method")
-    final val SCHEME    = ByteString(":scheme")
-    final val AUTHORITY = ByteString(":authority")
-    final val STATUS    = ByteString(":status")
-    final val PATH      = ByteString(":path")
-    final val HOST      = ByteString("Host")
+  object Constants {
+    final val METHOD         = ByteString(":method")
+    final val SCHEME         = ByteString(":scheme")
+    final val AUTHORITY      = ByteString(":authority")
+    final val STATUS         = ByteString(":status")
+    final val PATH           = ByteString(":path")
+    final val HOST           = ByteString("Host")
   }
 
-  import PseudoHeaders._
+  import Constants._
 
   private def encode(s: String): ByteString =
     ByteString.fromString(s, "UTF-8")
@@ -29,9 +31,12 @@ object Header extends {
     extends Header
 
   case class WrappedAkkaHeader(akkaHeader: akkaModel.HttpHeader, secure: Boolean = false) extends Header {
-    override val name = encode(akkaHeader.name)
-    override val value = encode(akkaHeader.value)
+    override val name = encode(akkaHeader.name.toLowerCase)
+    override val value = encode(akkaHeader.value.toLowerCase)
   }
+
+  implicit def headerFromAkka(header: HttpHeader): WrappedAkkaHeader =
+    WrappedAkkaHeader(header, false)
 
   object WrappedAkkaHeader {
     implicit def unwrapAkkaHeader(wrapped: WrappedAkkaHeader): akkaModel.HttpHeader =
@@ -50,6 +55,15 @@ object Header extends {
     override val secure = false
   }
 
-  def plain(name: ByteString, value: ByteString) = RawHeader(name, value, secure = false)
-  def secure(name: ByteString, value: ByteString) = RawHeader(name, value, secure = true)
+  def plain(name: ByteString, value: ByteString): RawHeader =
+    RawHeader(name, value, secure = false)
+
+  def plain(name: String, value: String): RawHeader =
+    RawHeader(ByteString(name.toLowerCase), ByteString(value.toLowerCase), secure = false)
+
+  def secure(name: ByteString, value: ByteString): RawHeader =
+    RawHeader(name, value, secure = true)
+
+  def secure(name: String, value: String): RawHeader =
+    RawHeader(ByteString(name.toLowerCase), ByteString(value.toLowerCase), secure = true)
 }
