@@ -6,10 +6,11 @@ import akka.util.ByteString
 import net.danielkza.http2.protocol.Frame
 
 package object stream {
-  val framing = BidiFlow.fromGraph(FlowGraph.create() { b =>
-    val outbound = b.add(Flow[Frame].transform(() => new FrameEncoderStage))
-    val inbound = b.add(Flow[ByteString].transform(() => new FrameDecoderStage))
-    BidiShape.fromFlows(outbound, inbound)
-  })
-
+  private[stream] def headAndTailFlow[T]: Flow[Source[T, Any], (T, Source[T, Unit]), Unit] =
+    Flow[Source[T, Any]]
+      .flatMapConcat {
+        _.prefixAndTail(1)
+          .filter(_._1.nonEmpty)
+          .map { case (prefix, tail) ⇒ (prefix.head, tail) }
+      }
 }
