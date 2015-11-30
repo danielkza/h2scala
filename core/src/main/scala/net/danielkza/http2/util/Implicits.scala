@@ -3,10 +3,9 @@ package net.danielkza.http2.util
 import scala.language.experimental.macros
 import java.io.{IOException, OutputStream}
 import java.nio.ByteBuffer
-
-import net.danielkza.http2.macros.{BitPatterns => BitPatternsMacros}
-
+import scalaz.\/
 import akka.util.ByteString
+import net.danielkza.http2.macros.{BitPatterns => BitPatternsMacros}
 
 trait Implicits {
   implicit class BytePattern(sc: StringContext) {
@@ -76,6 +75,10 @@ trait Implicits {
     @throws[IOException] def write(string: ByteString): Unit = {
       string.asByteBuffers.foreach(write)
     }
+  }
+
+  implicit class DisjunctionWithThrow[E, V](self: \/[E, V])(implicit ev: E => Throwable) {
+    def orThrow: V = self.leftMap { e => throw ev(e) }.merge
   }
 }
 
