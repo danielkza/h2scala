@@ -1,7 +1,7 @@
 package net.danielkza.http2.hpack.coders
 
 import scala.language.experimental.macros
-import scala.collection.immutable.HashMap
+import scala.collection.immutable.{IntMap, HashMap}
 
 import scalaz.ImmutableArray
 
@@ -12,11 +12,11 @@ class HuffmanCoding(codes: (Byte, Short)*) {
   final val initialTable = decodingTablesMap(0)
   
   final type DecodingTable = IndexedSeq[Short]
-  final type DecodingTableMap = HashMap[Int, DecodingTable]
+  final type DecodingTableMap = Map[Int, DecodingTable]
   final type EncodingTable = IndexedSeq[Long]
 
   private def expandCodes(codes: (Byte, Short)*): (DecodingTableMap, EncodingTable) = {
-    val decodingTableMap = HashMap.newBuilder[Int, DecodingTable]
+    var decodingTableMap = IntMap.empty[DecodingTable]
     var curDecodingTable = ImmutableArray.newBuilder[Short]
     val encodingTable = new Array[Long](EOS + 1)
 
@@ -32,16 +32,19 @@ class HuffmanCoding(codes: (Byte, Short)*) {
       // assigned to the initial table (since there's no previous byte to care about).
       if(lengthBytes > 1) {
         // Shift the code if we now use an extra byte
-        if(lengthBytes > prevLengthBytes)
+        var currentPrefix = currentCode
+
+        if(lengthBytes > prevLengthBytes) {
           currentCode <<= 8
-        
-        val currentPrefix = currentCode >>> 8
+        } else {
+          currentPrefix >>>= 8
+        }
+
         if(currentPrefix != lastPrefix) {
           // The last byte has changed. Write out the just finished table to it's prefix and create a new one.
-          decodingTableMap += Code.align(lastPrefix, prevLengthBytes * 8) -> curDecodingTable.result()
+          decodingTableMap += Code.alignByBytes(lastPrefix, prevLengthBytes - 1) -> curDecodingTable.result()
           curDecodingTable = ImmutableArray.newBuilder
-          curDecodingTable.sizeHint(256)
-          
+
           // Start out a new prefix and adjust the current code to match the correct length
           lastPrefix = currentPrefix
         }
@@ -71,7 +74,7 @@ class HuffmanCoding(codes: (Byte, Short)*) {
     // The last table won't be added inside the loop since it break after the values run out
     decodingTableMap += lastPrefix -> curDecodingTable.result()
     
-    (decodingTableMap.result(), ImmutableArray.make(encodingTable))
+    (decodingTableMap, ImmutableArray.make(encodingTable))
   }
   
   def decodingTableForCode(currentCode: Int): Option[DecodingTable] = {
@@ -85,8 +88,11 @@ object HuffmanCoding {
     
   object Code {
     @inline def align(code: Int, length: Int): Int = {
-      val lengthBytes = (length + 8 - 1) / 8
-      lengthBytes match {
+      alignByBytes(code, (length + 8 - 1) / 8)
+    }
+
+    @inline def alignByBytes(code: Int, bytes: Int): Int = {
+      bytes match  {
         case 1 => code << 24
         case 2 => code << 16
         case 3 => code << 8

@@ -20,9 +20,9 @@ class CompressedBytesCoder extends Coder[ByteString] {
     var length: Int = 0
 
     def encodeSymbol(symbol: Byte): Unit = {
-      val Code(code, codeLen) = coding.encodingTable(symbol)
+      val Code(code, codeBits) = coding.encodingTable(symbol)
       hold |= (code & 0xFFFFFFFFL) << (32 - outstandingBits)
-      outstandingBits += codeLen
+      outstandingBits += codeBits
       
       while(outstandingBits >= 8) {
         buffer += (hold >>> 56).toByte
@@ -60,7 +60,8 @@ class CompressedBytesCoder extends Coder[ByteString] {
   }
 
   private def validPadding(value: Int, bits: Int) = {
-    (value.toByte >> (8 - bits)) == -1
+    if (bits == 0) true
+    else (value.toByte >> (8 - bits)) == -1
   }
   
   private def decodeLiteral(iter: BufferedIterator[Byte], length: Int): \/[HeaderError, (ByteString, Int)] = {
@@ -70,6 +71,7 @@ class CompressedBytesCoder extends Coder[ByteString] {
 
     var outstandingBits = 0
     var hold: Long = 0
+    var prefixBits: Int = 0
     var bytesRead = 0
     var error: HeaderError = null
     
@@ -83,7 +85,7 @@ class CompressedBytesCoder extends Coder[ByteString] {
       if(outstandingBits >= 32)
         return raiseError(UnknownCode)
 
-      if(bytesRead < length && outstandingBits <= 8) {
+      if(bytesRead < length && (outstandingBits - prefixBits) < 8) {
         if(!iter.hasNext)
           return raiseError(IncompleteInput(_, length))
         else {
@@ -93,11 +95,12 @@ class CompressedBytesCoder extends Coder[ByteString] {
         }
       }
       
-      val nextByte = (hold >>> 56).toInt
+      val nextByte = ((hold >>> (56 - prefixBits)) & 0xFF).toInt
       currentTable.lift(nextByte) match {
         case Some(Symbol(symbol, codeLen)) if outstandingBits >= codeLen =>
           outstandingBits -= codeLen
           hold <<= codeLen
+          prefixBits = 0
           
           if(symbol == EOS)
             raiseError(EOSDecoded)
@@ -111,9 +114,11 @@ class CompressedBytesCoder extends Coder[ByteString] {
           else 
             EOS
         case _ =>
-          val partialCode = (hold >>> 32).toInt
-          coding.decodingTableForCode(partialCode) match {
-            case Some(nextTable) => decodeSymbol(nextTable)
+          prefixBits = 8 * (outstandingBits / 8) // observe truncation
+          val prefix = (hold >>> 32).toInt & (-1 << (32 - prefixBits))
+          coding.decodingTableForCode(prefix) match {
+            case Some(nextTable) =>
+              decodeSymbol(nextTable)
             case _ => raiseError(UnknownCode)
           }
       }

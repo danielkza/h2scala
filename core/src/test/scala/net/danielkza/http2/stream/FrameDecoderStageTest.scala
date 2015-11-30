@@ -33,7 +33,7 @@ class FrameDecoderStageTest extends AkkaStreamsTest with TestHelpers {
   val framesBytes = okFrames.map(frameCoder.encode(_).getOrThrow())
 
   "FrameDecoderStage" should {
-    val flow = Flow[ByteString].transform(() => new FrameDecoderStage)
+    val flow = Flow[ByteString].transform(() => new FrameDecoderStage(false))
     val (pub, sub) = TestSource.probe[ByteString]
       .via(flow)
       .toMat(TestSink.probe[Frame])(Keep.both)
